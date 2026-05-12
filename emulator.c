@@ -19,10 +19,6 @@ struct state {//generates a log of actions taken by the CPU to aid in debugging
 
 
 int main(int argc, char *argv[]){
-    /*uint8_t mem_init[0x10010];
-    for(int i = 0; i<0x10010; i++){
-        mem_init[i]=0;
-    }*/
 
     struct state log[LOG_SIZE];
 
