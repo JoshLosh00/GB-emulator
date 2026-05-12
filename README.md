@@ -1,5 +1,5 @@
 # GB-emulator
-A project to write a Game Boy emulator in C.
+A project to write a Game Boy emulator in C using SDL2.
 Current features:
 CPU instruction decoder, basic pixel processing unit, timers and interrupts, and ROM bank switching via MBC1.
 Current limitations:
