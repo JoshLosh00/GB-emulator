@@ -7,7 +7,7 @@
 #define LOG_SIZE 100 
 
 
-struct state {
+struct state {//generates a log of actions taken by the CPU to aid in debugging
     uint16_t PC;
     uint8_t opcode;
     uint8_t b1;
@@ -61,7 +61,7 @@ int main(int argc, char *argv[]){
         printf("There is no file of that name to open.\n");
         return 1;
         }
-    fread(mem, 1, 0x8000, fp);//data banks should be considered here
+    fread(mem, 1, 0x8000, fp);
     rewind(fp);
     MBC->banks = 2<<mem[0x0148]; 
     uint8_t bank[MBC->banks][0x4000];//ONLY WORKS FOR ROM BANKS
@@ -82,7 +82,7 @@ int main(int argc, char *argv[]){
     MBC->ROM_bank_number=1;
 
     cpu cpuinstance = {0};
-    ppu_data datainstance = {0};//Maybe this won't work
+    ppu_data datainstance = {0};
     ppu_data *data = &datainstance;
     for(int i = 0; i<144*160; i++){
         data->framebuffer[i]=0xFFFFFFFF;
@@ -106,9 +106,10 @@ int main(int argc, char *argv[]){
     CPU->vblank_rq = 0;
     CPU->halted = 0;
 
-    mem[0xFF05] = 0x00; // TIMA
-    mem[0xFF06] = 0x00; // TMA
-    mem[0xFF07] = 0x00; // TAC
+    //These values are to cover for the current lack of a boot sequence
+    mem[0xFF05] = 0x00; 
+    mem[0xFF06] = 0x00; 
+    mem[0xFF07] = 0x00; 
     mem[0xFF10] = 0x80;
     mem[0xFF11] = 0xBF;
     mem[0xFF12] = 0xF3;
@@ -127,7 +128,7 @@ int main(int argc, char *argv[]){
     mem[0xFF24] = 0x77;
     mem[0xFF25] = 0xF3;
     mem[0xFF26] = 0xF1;
-    mem[LCDC] = 0x91; // LCDC
+    mem[LCDC] = 0x91; 
     mem[0xFF42] = 0x00;
     mem[0xFF43] = 0x00;
     mem[0xFF45] = 0x00;
@@ -138,17 +139,9 @@ int main(int argc, char *argv[]){
     mem[0xFF4B] = 0x00;
     mem[IE] = 0x00;
 
-    printf("cart type: %02X\n", mem[0x0147]);
+    //printf("cart type: %02X\n", mem[0x0147]);
 
     while(1){
-            /*if((counter % 10000) == 0){//(23000<counter < 24000){
-                printf("Current PC %04x, current opcode %02x, next two bytes %02x %02x A: %02x F: %02x\n", 
-                    CPU->PC, mem[CPU->PC], mem[CPU->PC+1],mem[CPU->PC+2], CPU->A, CPU->F);
-                }
-            if ((cycles > 10) || (div_timer > 10000)){
-                printf("failed, cycles is %d\n",cycles);
-                return 1;
-            }*/
             div_timer += cycles;
             if (div_timer > 64){//writing here resets the value to 0
                 mem[0xFF04]++;//incrementing the DIV register
@@ -207,6 +200,7 @@ int main(int argc, char *argv[]){
                 cycles = execute(MBC, CPU, mem, counter);
             }
 
+            //The current implementation of the the MBC is done here. In future, it will be done in the write8 function found in CPU.c
             if((MBC->current_bank_a != (MBC->RAM_bank_number<<5) ) && MBC->Banking_mode_select){
                 memcpy(mem, bank[MBC->RAM_bank_number<<5], 0x4000);
                 MBC->current_bank_a = MBC->RAM_bank_number<<5;
@@ -222,11 +216,7 @@ int main(int argc, char *argv[]){
             for(int i=0; i<4*cycles; i++){
                 ppu(CPU, mem, &ppu_timer, data);
             }
-            /*if (CPU->PC == 0xD601) {
-                    printf("D601 stub: %02X %02X %02X\n",
-        mem[0xD601], mem[0xD602], mem[0xD603]);
-            }*/
-            counter++;
+            counter++;//This variable is for debugging
 
             if(ppu_timer == 0){
                 SDL_UpdateTexture(
@@ -242,16 +232,12 @@ int main(int argc, char *argv[]){
             }
 
             CPU->F &= 0xF0;
+            /* Printing serial output to the screen. Useful for test ROMS
             if (mem[0xFF02] & 0x80) {
                 putchar(mem[0xFF01]);
                 fflush(stdout);
-                /*if(mem[0xFF01] =='4'){
-                    for(int i = 0; i < LOG_SIZE; i++){
-                    printf("Instruction number: %7d PC: %04X opcode: %02X next two bits: %02X %02X A: %02X F: %02X\n", log[i].counter, log[i].PC, log[i].opcode, log[i].b1, log[i].b2, log[i].A, log[i].F);
-                    }
-                    break;
-                }*/
-                mem[0xFF02] = 0x00; // clear transfer
+                }
+                mem[0xFF02] = 0x00; // clear transfer*/
 
             }
 
@@ -282,23 +268,13 @@ int main(int argc, char *argv[]){
                 }
             }
 
-            /*if(counter == 16000000){
+            /*if(counter == 100000){//accessing the log
                 for(int i = 0; i < LOG_SIZE; i++){
                     printf("PC: %04X opcode: %02X next two bits: %02X %02X A: %02X F: %02X\n", log[i].PC, log[i].opcode, log[i].b1, log[i].b2, log[i].A, log[i].F);
                 }
                 break;
             }*/
 
-            //if (mem[0xFF02] != 0) {
-            //    printf("Serial control: %02X\n", mem[0xFF02]);
-            //}
-            /*if (CPU->PC == 0x0100) {
-                printf("Starting ROM\n");
-            }*/
-            //printf("%x ",CPU->PC);
-            //if (CPU->PC == 0x04FD || CPU->PC == 0x04FF || CPU->PC == 0x0501 || CPU->PC == 0x0502) {
-            //printf("opcode = %02X NEXT = %02X PC=%04X A=%02X F=%02X\n", opcode, next, programmecounter, CPU->A, CPU->F);
-            //}
         }
         //will make this into a proper error function.
         SDL_DestroyTexture(texture);
