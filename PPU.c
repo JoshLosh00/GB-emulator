@@ -41,10 +41,10 @@ uint32_t draw_pixel(char object_exists, char BG_enable, uint8_t obj_data, uint8_
 
 void ppu(cpu *CPU, uint8_t *mem, int *dots, ppu_data *data){
     //one dot is a quater of a machine cycle 1/2 in GBC double speed mode
-    //Probably needs another argument
     //154 scanlines (0-153)
-    //144-153 are in mode 1
-    //first 80 dots of each scanline are in mode 2 the next 376 are other in mode 3 or 0
+    //144-153 are in mode 1 VBLANK
+    //first 80 dots of each scanline are in mode 2 the next 376 are other in mode 3 or 0 
+    //Currently mode 3 lasts 160 dots - this would be longer on a cycle accurate emulator
     mem[LY] = (*dots)/456;
     uint8_t scanline_dots = (*dots) % 456;
     uint8_t mode;
@@ -72,7 +72,7 @@ void ppu(cpu *CPU, uint8_t *mem, int *dots, ppu_data *data){
                     }
                 }
             }
-        } else if((scanline_dots >= 80) && (scanline_dots < 240)){//Shit mode 3 that renders things naively
+        } else if((scanline_dots >= 80) && (scanline_dots < 240)){
             //one dot per pixel - always faster then DMG;
             mode = 3;
             uint8_t scanx = scanline_dots - 80;
@@ -96,14 +96,14 @@ void ppu(cpu *CPU, uint8_t *mem, int *dots, ppu_data *data){
                 for(i = 0; i<data->nobjects;i++){
                     obj_x = mem[data->objects[i]+1];//this is the right edge of the object
                     int obj_left = obj_x -8;
-                    obj_y = mem[data->objects[i]];
+                    obj_y = mem[data->objects[i]];//this is the top row of the object + 16 so a value of 0 corresponds to being offscreen
                     obj_data = mem[data->objects[i]+3];
                     if( (obj_left <= scanx) && (scanx < obj_x)){
 
                         bool is_low_tile = 
-                            (mem[LCDC] & 0x04) && 
-                            ((((mem[LY] + 8)>=obj_y) && ((obj_data&0x40)==0)) ||
-                            (((mem[LY] + 8)<obj_y) && (obj_data&0x40)));
+                            (mem[LCDC] & 0x04) && //8x16 objects are enabled
+                            ((((mem[LY] + 8)>=obj_y) && ((obj_data&0x40)==0)) ||//either LY is in lines 8 to 15 of the object and there is no y-flip
+                            (((mem[LY] + 8)<obj_y) && (obj_data&0x40)));//or LY is in lines 0 to 7 of the object and there is a y-flip
 
                         uint8_t top_tile = mem[data->objects[i]+2];
 
