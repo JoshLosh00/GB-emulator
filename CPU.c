@@ -39,13 +39,13 @@ void write8(struct MBC1 *MBC, uint8_t *mem, uint16_t addr, uint8_t value){
         MBC->Banking_mode_select = value&0x01;
     } else if(addr == 0xFF04){
         mem[0xFF04]=0;//DIV reset
-    }/*if (addr >= 0xE000 && addr <= 0xFDFF) {
+    } else if (addr >= 0xE000 && addr <= 0xFDFF) {//echo RAM
         mem[addr] = value;
         mem[addr - 0x2000] = value;
     } else if (addr >= 0xC000 && addr <= 0xDDFF) {
         mem[addr] = value;
         mem[addr + 0x2000] = value;
-    } */else{
+    } else{
         mem[addr] = value;
     }
 }
@@ -61,8 +61,6 @@ static inline uint16_t pop16(cpu *CPU, uint8_t *mem){
     uint8_t hi = mem[CPU->SP];
     CPU->SP++;
     return (((uint8_t) hi) << 8) | lo;
-
-    printf("POP  %04X from SP=%04X\n", (((uint8_t) hi) << 8) | lo, CPU->SP);
 }
 static inline void SetCAdd16(uint16_t old, uint16_t value, cpu *CPU){
     if (((uint32_t) old + (uint32_t) value) > 0xFFFF){
@@ -123,7 +121,6 @@ static inline void push16(struct MBC1 *MBC, cpu *CPU, uint8_t *mem, uint16_t val
     write8(MBC, mem, CPU->SP, hi);
     CPU->SP--;
     write8(MBC, mem, CPU->SP, lo);
-    //printf("PUSH %04X at SP=%04X\n", value, CPU->SP);
 }
 static inline void SetCShiftL(cpu *CPU, uint8_t value){
     if((value & 0x80) == 0x80){
@@ -207,9 +204,7 @@ void ld_imm16(cpu *CPU, uint8_t *mem, uint8_t offset){
             CPU->L = lo;
             break; 
         case 0x30:
-            //printf("SP changed from %04x ", CPU->SP);
             CPU->SP = (((uint16_t) hi)<<8) | lo;
-            //printf("to %04x via ld_imm16 with opcode at PC = %04x\n", CPU->SP, CPU->PC-3);
             break;
     }
 }
@@ -422,7 +417,6 @@ void rla(cpu *CPU, uint8_t *mem){
     } else{
         CPU->F = 0;
     }
-    ;
     
 }
 
@@ -444,8 +438,6 @@ void rra(cpu *CPU, uint8_t *mem){
     } else{
         CPU->F = 0;
     }
-    ;
-    
 }
 
 void daa(cpu *CPU, uint8_t *mem){
@@ -491,48 +483,33 @@ void ccf(cpu *CPU, uint8_t *mem){
 void jr_imm8(cpu *CPU, uint8_t *mem, int counter){
     int8_t value = read8(CPU,mem);
     CPU->PC += value;
-    //printf("tempPC %04d \tPC %04d\tvalue %02d\n",tempPC, CPU->PC, value);
-    //printf("tempPC %04x\tPC %04x\n",tempPC,CPU->PC);
 }
 
 void jr_nz_imm8(cpu *CPU, uint8_t *mem){
     int8_t value = read8(CPU,mem);
     if((CPU->F & Z) == 0){
-    //    printf("PC before: %04x ",CPU->PC);
-    CPU->PC += value;
-    //printf("PC after: %04x, value: %02d, %02x\n",CPU->PC, value, value);
-    //printf("F: %02x jump taken\n", CPU->F);
-    } else{
-    //    printf("F: %02x jump not taken\n", CPU->F);
-    }
+        CPU->PC += value;
+    } 
 }
 
 void jr_nc_imm8(cpu *CPU, uint8_t *mem){
     int8_t value = read8(CPU,mem);
     if((CPU->F & Cy) == 0){
-        CPU->PC += value;
-        //printf("F: %02x jump taken\n", CPU->F);
-    } else{
-    //    printf("F: %02x jump not taken\n", CPU->F);
-    }
+        CPU->PC += value
+    } 
 }
 
 void jr_z_imm8(cpu *CPU, uint8_t *mem){
     int8_t value = read8(CPU,mem);
     if(CPU->F & Z){
         CPU->PC += value;
-    } else{
-    //    printf("F: %02x jump not taken\n", CPU->F);
-    }
+    } 
 }
 
 void jr_c_imm8(cpu *CPU, uint8_t *mem){
     int8_t value = read8(CPU,mem);
     if(CPU->F & Cy){
         CPU->PC += value;
-    //printf("F: %02x jump taken\n", CPU->F);
-    } else{
-    //    printf("F: %02x jump not taken\n", CPU->F);
     }
 }
 
