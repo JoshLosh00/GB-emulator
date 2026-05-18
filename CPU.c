@@ -12,13 +12,46 @@ static inline uint16_t getBC(cpu *CPU){
 static inline uint16_t getDE(cpu *CPU){
     return ((uint16_t) CPU->D << 8) | (uint16_t) CPU->E;
 }
-static inline uint8_t read8(cpu *CPU, uint8_t *mem){
-    uint8_t value = mem[CPU->PC];
+
+uint8_t read_mem(cpu *CPU, uint16_t addr, uint8_t *mem){
+//    bool ignore = //this may need to be filled out with more conditions
+//        (CPU->transfer && (addr<0xFF80)) ||
+//        (!CPU->VRAM_access && (addr>= 0x8000) && (addr<=0x9FFF)) || 
+  //      (!CPU->OAM_access && (addr>= 0xFE00) && (addr<=0xFE9F));
+    //if(ignore){
+      //  return 0xFF;//rubbish value
+    //} else{
+
+        /*if(addr == 0xFF00){
+            uint8_t joyp = mem[addr];
+            return 0xC0|joyp|0x0F;//nothing pressed change when implementing JOYP
+        } else{*/
+            return mem[addr];
+        //}
+    //}
+
+}
+
+static uint16_t read_mem2(cpu *CPU, uint16_t addr, uint8_t *mem){
+//    bool ignore = //this may need to be filled out with more conditions
+  //      (CPU->transfer && (addr<0xFF80)) ||
+    //    (!CPU->VRAM_access && (addr>= 0x8000) && (addr<=0x9FFF)) || 
+      //  (!CPU->OAM_access && (addr>= 0xFE00) && (addr<=0xFE9F));
+//    if(ignore){
+  //      return 0xFF;//rubbish value
+    //} else{
+        return addr;
+    //}
+
+}
+
+static inline uint8_t readPC(cpu *CPU, uint8_t *mem){//memory cannot be accessed at certain times such as during a DMA transfer
+    uint8_t value = read_mem(CPU, CPU->PC, mem);
     (CPU->PC)++;
     return value;
 }
 
-void write8(struct MBC1 *MBC, uint8_t *mem, uint16_t addr, uint8_t value){
+void write8(struct MBC1 *MBC, cpu *CPU, uint8_t *mem, uint16_t addr, uint8_t value){//memory cannot be accessed at certain times such as during a DMA transfer
     if(addr <= 0x1FFF){
         if((value&0x0F)==0x0A){
             MBC->RAM_enable = 1;
@@ -37,30 +70,79 @@ void write8(struct MBC1 *MBC, uint8_t *mem, uint16_t addr, uint8_t value){
         MBC->RAM_bank_number = value & 0x03;
     } else if((addr >= 0x6000) && (addr <= 0x7FFF)){
         MBC->Banking_mode_select = value&0x01;
-    } else if(addr == 0xFF04){
-        mem[0xFF04]=0;//DIV reset
-    } else if (addr >= 0xE000 && addr <= 0xFDFF) {//echo RAM
+    // if(addr < 0x8000){
+        //nothing happens used for degugging tetris
+    } else if(addr == DIV){
+        mem[DIV]=0;//DIV reset
+    } else if(addr == DMA){
+        mem[DMA] = value;
+        CPU->transfer_pending = 1;
+    } else if(addr == LCDC){
+        //printf("LCDC write old=%02X new=%02X PC=%04X\n", mem[LCDC], value, CPU->PC);
+        if((mem[LCDC]&0x80)&&((value&0x80) == 0)){//on to off 
+            mem[LY] = 0;
+            mem[STAT] &= 0xFC;//setting mode to 0
+            CPU->VRAM_access = 1;
+            CPU->OAM_access = 1;
+        } else if(((mem[LCDC]&0x80)==0)&&(value&0x80)){//off to on
+            CPU->frame_timer = 0;
+            mem[LY] = 0;
+        }
+        mem[LCDC] = value;
+    } else if(addr == STAT){
+        //printf("STAT write old=%02X new=%02X PC=%04X\n", mem[STAT], value, CPU->PC);
+        mem[STAT] = (mem[STAT] & 0x07)  | (value & 0x78);
+    } else if(addr == JOYP){
+        //printf("JOYP write old=%02X new=%02X PC=%04X\n", mem[0xFF00], value, CPU->PC);
+        uint8_t state = mem[JOYP] & 0x0F;
+        mem[addr] = (value & 0x30)|state;
+    }
+    else if(addr == LY){
+        //printf("Attempted write value %02X to LY at PC=%04X\n",value, CPU->PC);
+        //CPU->instance++;
+    }
+    else if((addr <= 0xFF7F)&&(addr >= 0xFF00)){
+        //printf("Write to %04X old=%02X new=%02X PC=%04X\n", addr, mem[addr], value, CPU->PC);
+        mem[addr] = value;
+    }
+    else{
+//        if(CPU->transfer){
+  //          if(addr>=0xFF80){
+    //            mem[addr]=value;
+      //      }
+        //} else{
+//            bool ignore = 
+  //              (!CPU->VRAM_access && (addr>= 0x8000) && (addr<=0x9FFF)) || 
+    //            (!CPU->OAM_access && (addr>= 0xFE00) && (addr<=0xFE9F));
+      //      if(!ignore){
+                mem[addr]=value;
+        //    }
+        //}
+    }
+
+    /*Echo RAM. can probably do this a better way but isn't a priority now
+    else if (addr >= 0xE000 && addr <= 0xFDFF) {
         mem[addr] = value;
         mem[addr - 0x2000] = value;
     } else if (addr >= 0xC000 && addr <= 0xDDFF) {
         mem[addr] = value;
         mem[addr + 0x2000] = value;
-    } else{
-        mem[addr] = value;
-    }
+    }*/
 }
 static inline uint16_t read16(cpu *CPU, uint8_t *mem){
-    uint8_t lo = read8(CPU,mem);
-    uint8_t hi = read8(CPU,mem);
+    uint8_t lo = readPC(CPU,mem);
+    uint8_t hi = readPC(CPU,mem);
     uint16_t value = (((uint16_t) hi) << 8) | lo;
     return value;
 }
 static inline uint16_t pop16(cpu *CPU, uint8_t *mem){
-    uint8_t lo = mem[CPU->SP];
+    uint8_t lo = read_mem(CPU, CPU->SP, mem);
     CPU->SP++;
-    uint8_t hi = mem[CPU->SP];
+    uint8_t hi = read_mem(CPU, CPU->SP, mem);
     CPU->SP++;
     return (((uint8_t) hi) << 8) | lo;
+
+    //printf("POP  %04X from SP=%04X\n", (((uint8_t) hi) << 8) | lo, CPU->SP);
 }
 static inline void SetCAdd16(uint16_t old, uint16_t value, cpu *CPU){
     if (((uint32_t) old + (uint32_t) value) > 0xFFFF){
@@ -118,9 +200,10 @@ static inline void push16(struct MBC1 *MBC, cpu *CPU, uint8_t *mem, uint16_t val
     uint8_t hi = value >> 8;
     uint8_t lo = value;
     CPU->SP--;
-    write8(MBC, mem, CPU->SP, hi);
+    write8(MBC, CPU, mem, CPU->SP, hi);
     CPU->SP--;
-    write8(MBC, mem, CPU->SP, lo);
+    write8(MBC, CPU, mem, CPU->SP, lo);
+    //printf("PUSH %04X at SP=%04X\n", value, CPU->SP);
 }
 static inline void SetCShiftL(cpu *CPU, uint8_t value){
     if((value & 0x80) == 0x80){
@@ -154,7 +237,7 @@ uint8_t* get345reg(cpu *CPU, uint8_t reg, uint8_t *mem){
             return &CPU->L;
         case(0x30):
             {uint16_t HL = getHL(CPU);
-            return &(mem[HL]);}
+            return &mem[read_mem2(CPU, HL, mem)];}//COME BACK
         case(0x38):
             return &CPU->A;
         default:
@@ -178,7 +261,7 @@ uint8_t* get012reg(cpu *CPU, uint8_t reg, uint8_t *mem){
             return &CPU->L;
         case(0x06):
             {uint16_t HL = getHL(CPU);
-            return &mem[HL];}
+            return &mem[read_mem2(CPU, HL, mem)];}//need to get around this COME BACK
         case(0x07):
             return &CPU->A;
         default:
@@ -187,8 +270,8 @@ uint8_t* get012reg(cpu *CPU, uint8_t reg, uint8_t *mem){
 }
 
 void ld_imm16(cpu *CPU, uint8_t *mem, uint8_t offset){
-    uint8_t lo = read8(CPU, mem);
-    uint8_t hi = read8(CPU, mem);
+    uint8_t lo = readPC(CPU, mem);
+    uint8_t hi = readPC(CPU, mem);
 
     switch(offset){
         case 0x00:
@@ -204,7 +287,9 @@ void ld_imm16(cpu *CPU, uint8_t *mem, uint8_t offset){
             CPU->L = lo;
             break; 
         case 0x30:
+            //printf("SP changed from %04x ", CPU->SP);
             CPU->SP = (((uint16_t) hi)<<8) | lo;
+            //printf("to %04x via ld_imm16 with opcode at PC = %04x\n", CPU->SP, CPU->PC-3);
             break;
     }
 }
@@ -213,27 +298,27 @@ void ld_imm16_sp(struct MBC1 *MBC, cpu *CPU, uint8_t *mem){
     uint16_t addr = read16(CPU, mem);
     uint8_t lo = (uint8_t) CPU->SP;
     uint8_t hi = (uint8_t) (CPU->SP >> 8);
-    write8(MBC, mem, addr, lo);
-    write8(MBC, mem, addr + 1, hi);
+    write8(MBC, CPU, mem, addr, lo);
+    write8(MBC, CPU, mem, addr + 1, hi);
 }
 
 void ld_a_r16mem(cpu *CPU, uint8_t *mem, uint8_t offset){
     uint16_t HL = getHL(CPU);
     switch(offset){
         case 0x00:
-            CPU->A = mem[getBC(CPU)];
+            CPU->A = read_mem(CPU, getBC(CPU), mem);
             break;
         case 0x10:
-            CPU->A = mem[getDE(CPU)];
+            CPU->A = read_mem(CPU, getDE(CPU), mem);
             break;
         case 0x20:
-            CPU->A =  mem[HL];
+            CPU->A = read_mem(CPU, HL, mem);
             HL++;
             CPU->L = (uint8_t) HL;
             CPU->H = (uint8_t) (HL >> 8);
             break;
         case 0x30:
-            CPU->A =  mem[HL];
+            CPU->A =  read_mem(CPU, HL, mem);
             HL--;
             CPU->L = (uint8_t) HL;
             CPU->H = (uint8_t) (HL >> 8);
@@ -245,19 +330,19 @@ void ld_r16mem_a(struct MBC1 *MBC, cpu *CPU, uint8_t *mem, uint8_t offset){
     uint16_t HL = getHL(CPU);
     switch(offset){
         case 0x00:
-            write8(MBC, mem, getBC(CPU), CPU->A);
+            write8(MBC, CPU, mem, getBC(CPU), CPU->A);
             break;
         case 0x10:
-            write8(MBC, mem, getDE(CPU), CPU->A);
+            write8(MBC, CPU, mem, getDE(CPU), CPU->A);
             break;
         case 0x20:
-            write8(MBC, mem, HL, CPU->A);
+            write8(MBC, CPU, mem, HL, CPU->A);
             HL++;
             CPU->L = (uint8_t) HL;
             CPU->H = (uint8_t) (HL >> 8);
             break; 
         case 0x30:
-            write8(MBC, mem, HL, CPU->A);
+            write8(MBC, CPU, mem, HL, CPU->A);
             HL--;
             CPU->L = (uint8_t) HL;
             CPU->H = (uint8_t) (HL >> 8);
@@ -344,31 +429,49 @@ void add_HL_r16(cpu *CPU, uint8_t *mem, uint8_t offset){
     SetHAdd16(old, value, CPU);
 }
 
-void inc_r8(cpu *CPU, uint8_t *mem, uint8_t offset){
-    uint8_t *value = get345reg(CPU, offset, mem);
-    SetHAdd8(*value, 1, CPU);
-    (*value)++;
+void inc_r8(struct MBC1 *MBC, cpu *CPU, uint8_t *mem, uint8_t offset){
+    if(offset == 0x30){
+        uint8_t value = read_mem(CPU, getHL(CPU), mem);
+        write8(MBC, CPU, mem, getHL(CPU), value+1);//Unsure how this will interact with flags if reads and writes are unexpected
+        SetZ8(value+1,CPU);
+        SetHAdd8(value,1,CPU);
+    } else{
+        uint8_t *value = get345reg(CPU, offset, mem);
+        SetHAdd8(*value, 1, CPU);
+        (*value)++;
 
-    //flags
-    SetZ8(*value, CPU);
+        //flags
+        SetZ8(*value, CPU);
+    }
     CPU->F &= ~N;
 }
 
-void dec_r8(cpu *CPU, uint8_t *mem, uint8_t offset){
-    uint8_t *value = get345reg(CPU, offset, mem);
-    SetHSub8(*value, 1, CPU);
-    (*value)--;
+void dec_r8(struct MBC1 *MBC, cpu *CPU, uint8_t *mem, uint8_t offset){
+    if(offset == 0x30){
+        uint8_t value = read_mem(CPU, getHL(CPU), mem);
+        write8(MBC, CPU, mem, getHL(CPU), value-1);
+        SetZ8(value-1,CPU);
+        SetHSub8(value,1,CPU);
+    } else{
+        uint8_t *value = get345reg(CPU, offset, mem);
+        SetHSub8(*value, 1, CPU);
+        (*value)--;
 
-    //flags
-    SetZ8(*value, CPU);
+        //flags
+        SetZ8(*value, CPU);
+    }
 
     CPU->F |= N;
 }
 
-void ld_rd_imm8(cpu *CPU, uint8_t *mem, uint8_t offset){
-    uint8_t value = read8(CPU,mem);
-    uint8_t *reg = get345reg(CPU, offset, mem);
-    *reg = value;
+void ld_rd_imm8(struct MBC1 *MBC, cpu *CPU, uint8_t *mem, uint8_t offset){
+    uint8_t value = readPC(CPU,mem);
+    if(offset == 0x30){
+        write8(MBC, CPU, mem, getHL(CPU), value);
+    }else{
+        uint8_t *reg = get345reg(CPU, offset, mem);
+        *reg = value;
+    }
 }
 
 void rlca(cpu *CPU, uint8_t *mem){
@@ -417,7 +520,6 @@ void rla(cpu *CPU, uint8_t *mem){
     } else{
         CPU->F = 0;
     }
-    
 }
 
 void rra(cpu *CPU, uint8_t *mem){
@@ -438,6 +540,7 @@ void rra(cpu *CPU, uint8_t *mem){
     } else{
         CPU->F = 0;
     }
+    
 }
 
 void daa(cpu *CPU, uint8_t *mem){
@@ -481,35 +584,50 @@ void ccf(cpu *CPU, uint8_t *mem){
 }
 
 void jr_imm8(cpu *CPU, uint8_t *mem, int counter){
-    int8_t value = read8(CPU,mem);
+    int8_t value = readPC(CPU,mem);
     CPU->PC += value;
+    //printf("tempPC %04d \tPC %04d\tvalue %02d\n",tempPC, CPU->PC, value);
+    //printf("tempPC %04x\tPC %04x\n",tempPC,CPU->PC);
 }
 
 void jr_nz_imm8(cpu *CPU, uint8_t *mem){
-    int8_t value = read8(CPU,mem);
+    int8_t value = readPC(CPU,mem);
     if((CPU->F & Z) == 0){
-        CPU->PC += value;
-    } 
+    //    printf("PC before: %04x ",CPU->PC);
+    CPU->PC += value;
+    //printf("PC after: %04x, value: %02d, %02x\n",CPU->PC, value, value);
+    //printf("F: %02x jump taken\n", CPU->F);
+    } else{
+    //    printf("F: %02x jump not taken\n", CPU->F);
+    }
 }
 
 void jr_nc_imm8(cpu *CPU, uint8_t *mem){
-    int8_t value = read8(CPU,mem);
+    int8_t value = readPC(CPU,mem);
     if((CPU->F & Cy) == 0){
-        CPU->PC += value
-    } 
+        CPU->PC += value;
+        //printf("F: %02x jump taken\n", CPU->F);
+    } else{
+    //    printf("F: %02x jump not taken\n", CPU->F);
+    }
 }
 
 void jr_z_imm8(cpu *CPU, uint8_t *mem){
-    int8_t value = read8(CPU,mem);
+    int8_t value = readPC(CPU,mem);
     if(CPU->F & Z){
         CPU->PC += value;
-    } 
+    } else{
+    //    printf("F: %02x jump not taken\n", CPU->F);
+    }
 }
 
 void jr_c_imm8(cpu *CPU, uint8_t *mem){
-    int8_t value = read8(CPU,mem);
+    int8_t value = readPC(CPU,mem);
     if(CPU->F & Cy){
         CPU->PC += value;
+    //printf("F: %02x jump taken\n", CPU->F);
+    } else{
+    //    printf("F: %02x jump not taken\n", CPU->F);
     }
 }
 
@@ -528,8 +646,7 @@ void ld_r8_r8(struct MBC1 *MBC, cpu *CPU, uint8_t *mem, uint8_t source, uint8_t 
     uint8_t *d = get345reg(CPU, dest, mem);
     uint8_t *s = get012reg(CPU, source, mem);
     if (dest == 0x30){
-        write8(MBC, mem, getHL(CPU), *s);
-        uint8_t HL = getHL(CPU);
+        write8(MBC, CPU, mem, getHL(CPU), *s);
     }else {
         *d = *s;//destination = source.
     }
@@ -547,7 +664,7 @@ void add_a_r8(cpu *CPU, uint8_t *mem, uint8_t *s){
 
 void add_a_imm8(cpu *CPU, uint8_t *mem){
     uint8_t old = CPU->A;
-    uint8_t s = read8(CPU, mem);
+    uint8_t s = readPC(CPU, mem);
     CPU->A += s;
     SetZ8(CPU->A, CPU);
     SetHAdd8(old, s, CPU);
@@ -578,7 +695,7 @@ void adc_a_r8(cpu *CPU, uint8_t *mem, uint8_t *s){
 
 void adc_a_imm8(cpu *CPU, uint8_t *mem){
     uint8_t old = CPU->A;
-    uint8_t s = read8(CPU, mem);
+    uint8_t s = readPC(CPU, mem);
     uint8_t c = (CPU->F & Cy) ? 0x01 : 0x00;
     uint16_t result = old + s +c;
     CPU->A = (uint8_t) result;
@@ -607,7 +724,7 @@ void sub_a_r8(cpu *CPU, uint8_t *mem, uint8_t *s){
 
 void sub_a_imm8(cpu *CPU, uint8_t *mem){
     uint8_t old = CPU->A;
-    uint8_t s = read8(CPU, mem);
+    uint8_t s = readPC(CPU, mem);
     CPU->A -= s;
     SetZ8(CPU->A,CPU);
     SetHSub8(old, s, CPU);
@@ -636,7 +753,7 @@ void sbc_a_r8(cpu *CPU, uint8_t *mem, uint8_t *s){
 
 void sbc_a_imm8(cpu *CPU, uint8_t *mem){
     uint8_t old = CPU->A;
-    uint8_t s = read8(CPU, mem);
+    uint8_t s = readPC(CPU, mem);
     uint8_t c = (CPU->F & Cy) ? 0x01 : 0x00;
     CPU->A -= (s + c);
     SetZ8(CPU->A,CPU);
@@ -663,7 +780,7 @@ void and_a_r8(cpu *CPU, uint8_t *mem, uint8_t *s){
 }
 
 void and_a_imm8(cpu *CPU, uint8_t *mem){
-    uint8_t s = read8(CPU, mem);
+    uint8_t s = readPC(CPU, mem);
     CPU->A &= s;
     SetZ8(CPU->A,CPU);
  
@@ -683,7 +800,7 @@ void xor_a_r8(cpu *CPU, uint8_t *mem, uint8_t *s){
 }
 
 void xor_a_imm8(cpu *CPU, uint8_t *mem){
-    uint8_t s = read8(CPU, mem);
+    uint8_t s = readPC(CPU, mem);
     CPU->A ^= s;
     SetZ8(CPU->A,CPU);
  
@@ -703,7 +820,7 @@ void or_a_r8(cpu *CPU, uint8_t *mem, uint8_t *s){
 }
 
 void or_a_imm8(cpu *CPU, uint8_t *mem){
-    uint8_t s = read8(CPU, mem);
+    uint8_t s = readPC(CPU, mem);
     CPU->A |= s;
     SetZ8(CPU->A,CPU);
  
@@ -720,7 +837,7 @@ void cp_a_r8(cpu *CPU, uint8_t *mem, uint8_t *s){
 }
 
 void cp_a_imm8(cpu *CPU, uint8_t *mem){
-    uint8_t s = read8(CPU, mem);
+    uint8_t s = readPC(CPU, mem);
     SetZ8(CPU->A - s,CPU);
     SetHSub8(CPU->A, s, CPU);
     SetCSub8(CPU->A, s, CPU);
@@ -842,8 +959,8 @@ void rst(struct MBC1 *MBC, cpu *CPU, uint8_t *mem, uint8_t vec){
 }
 
 void pop_r16stk(cpu *CPU, uint8_t *mem, uint8_t reg){
-    uint8_t hi = mem[CPU->SP + 1];
-    uint8_t lo = mem[CPU->SP];
+    uint8_t hi = read_mem(CPU, CPU->SP + 1, mem);
+    uint8_t lo = read_mem(CPU, CPU->SP, mem);
     switch(reg){
         case(0x00)://BC
             CPU->B = hi;
@@ -884,27 +1001,27 @@ void push_r16stk(struct MBC1 *MBC, cpu *CPU, uint8_t *mem, uint8_t reg){
 }
 
 void ldh_c_a(struct MBC1 *MBC, cpu *CPU, uint8_t *mem){
-    write8(MBC, mem, 0xFF00 + CPU->C, CPU->A);
+    write8(MBC, CPU, mem, 0xFF00 + CPU->C, CPU->A);
 }
 void ldh_imm8_a(struct MBC1 *MBC, cpu *CPU, uint8_t *mem){
-    write8(MBC, mem, 0xFF00 + read8(CPU,mem), CPU->A);
+    write8(MBC, CPU, mem, 0xFF00 + readPC(CPU,mem), CPU->A);
 }
 void ld_imm16_a(struct MBC1 *MBC, cpu *CPU, uint8_t *mem){
-    write8(MBC, mem, read16(CPU,mem), CPU->A);
+    write8(MBC, CPU, mem, read16(CPU,mem), CPU->A);
 }
 void ldh_a_c(cpu *CPU, uint8_t *mem){
-    CPU->A = mem[0xFF00 + CPU->C];
+    CPU->A = read_mem(CPU, 0xFF00 + CPU->C, mem);
 }
 void ldh_a_imm8(cpu *CPU, uint8_t *mem){
-    CPU->A = mem[0xFF00 + read8(CPU,mem)];
+    CPU->A = read_mem(CPU, 0xFF00 + readPC(CPU,mem), mem);
 }
 void ld_a_imm16(cpu *CPU, uint8_t *mem){
-    CPU->A = mem[read16(CPU, mem)];
+    CPU->A = read_mem(CPU, read16(CPU, mem), mem);
 }
 
 void add_sp_imm8(cpu *CPU, uint8_t *mem){
     int16_t old = CPU->SP;
-    int8_t s = read8(CPU,mem);
+    int8_t s = readPC(CPU,mem);
     CPU->SP += s;
     CPU->F &= ~Z;
     CPU->F &= ~N;
@@ -913,7 +1030,7 @@ void add_sp_imm8(cpu *CPU, uint8_t *mem){
 }
 
 void ld_hl_sp_imm8(cpu *CPU, uint8_t *mem){//flags
-    int8_t s = read8(CPU,mem); 
+    int8_t s = readPC(CPU,mem); 
     uint16_t HL = CPU->SP + s;
     CPU->L = (uint8_t) HL;
     CPU->H = (uint8_t) (HL >> 8); 
@@ -1061,7 +1178,7 @@ void set_b3_r8(cpu *CPU, uint8_t *mem, uint8_t bit, uint8_t reg){
 }
 
 int CBprefix(cpu *CPU, uint8_t *mem){
-    uint8_t opcode = read8(CPU, mem);
+    uint8_t opcode = readPC(CPU, mem);
     uint8_t reg = opcode & 0x07;
     uint8_t bit = opcode & 0x38;
     switch(opcode & 0xC0){
@@ -1145,7 +1262,7 @@ uint32_t execute(struct MBC1 *MBC, cpu *CPU, uint8_t *mem, int counter){
     if(CPU->halted){
         return 1;//This means the CPU can only start again on t-cycles that are multiples of 4
     } else{
-        uint8_t opcode = read8(CPU, mem);
+        uint8_t opcode = readPC(CPU, mem);
         uint8_t u2block_mask = 0xC0;
         uint8_t l4block_mask = 0x0F;
         uint8_t m45block_mask = 0x30;
@@ -1225,7 +1342,7 @@ uint32_t execute(struct MBC1 *MBC, cpu *CPU, uint8_t *mem, int counter){
                         return 2;
                     case 0x04:
                     case 0x0C:
-                        inc_r8(CPU, mem, bits345);
+                        inc_r8(MBC, CPU, mem, bits345);
                         if(opcode == 0x34){
                             return 3;
                         } else{
@@ -1233,7 +1350,7 @@ uint32_t execute(struct MBC1 *MBC, cpu *CPU, uint8_t *mem, int counter){
                         }
                     case 0x05:
                     case 0x0D:
-                        dec_r8(CPU, mem, bits345);
+                        dec_r8(MBC, CPU, mem, bits345);
                         if(opcode == 0x35){
                             return 3;
                         } else{
@@ -1241,7 +1358,7 @@ uint32_t execute(struct MBC1 *MBC, cpu *CPU, uint8_t *mem, int counter){
                         }
                     case 0x06:
                     case 0x0E:
-                        ld_rd_imm8(CPU, mem, bits345);
+                        ld_rd_imm8(MBC, CPU, mem, bits345);
                         if(opcode == 0x36){
                             return 3;
                         } else{
@@ -1289,9 +1406,9 @@ uint32_t execute(struct MBC1 *MBC, cpu *CPU, uint8_t *mem, int counter){
                     return 1;
                 } else {
                     ld_r8_r8(MBC, CPU, mem, source, dest);
-                    if((opcode & 0x07) == 0x06){
+                    if(source == 0x06){
                         return 2;
-                    } else if(bits345 == 0x30){
+                    } else if(dest == 0x30){
                         return 2;
                     } else {
                         return 1;
