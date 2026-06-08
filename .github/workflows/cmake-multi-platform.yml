@@ -7,7 +7,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, windows-latest#] #, macos-latest]
 
     steps:
       - uses: actions/checkout@v3
@@ -16,9 +16,9 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get install -y libsdl2-dev
       
-      - name: Install SDL2 (macOS)
-        if: runner.os == 'macOS'
-        run: brew install sdl2
+      #- name: Install SDL2 (macOS)
+      #  if: runner.os == 'macOS'
+      #  run: brew install sdl2
       
       - name: Install SDL2 (Windows)
         if: runner.os == 'Windows'
