@@ -1,3 +1,0 @@
-C:/Users/USER/projects/emulator/build/CMakeFiles/emulator.dir
-C:/Users/USER/projects/emulator/build/CMakeFiles/edit_cache.dir
-C:/Users/USER/projects/emulator/build/CMakeFiles/rebuild_cache.dir
