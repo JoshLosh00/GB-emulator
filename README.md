@@ -29,6 +29,7 @@ To build the emulator first run the following command (this should be a MSYS2 sh
 Once inside the emulator directory run the command: cmake -B build && cmake --build build
 The emulator will then be inside the build directory.
 
+Credit to Daniel Hepper for the font used in the debugger.
 
 Technical Notes
 This programme aims to decode the data on GameBoy cartirdges and play GameBoy games. 
