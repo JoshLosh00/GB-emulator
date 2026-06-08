@@ -25,7 +25,7 @@ Linux:sudo apt install libsdl2-dev
 MacOS: brew install sdl2
 This requires homebrew
 
-To build the emulator first run the command: git clone https://github.com/JoshLosh00/GB-emulator
+To build the emulator first run the following command (this should be a MSYS2 shell if on Windows): git clone https://github.com/JoshLosh00/GB-emulator
 Once inside the emulator directory run the command: cmake -B build && cmake --build build
 The emulator will then be inside the build directory.
 
