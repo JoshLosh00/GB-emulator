@@ -12,7 +12,7 @@ ROMs not included.
 This emulator passes all tests in the cpu_instrs.gb test ROM hosted at https://github.com/L-P/blargg-test-roms/. These tests are disigned to examine the implementation of an emulators CPU operations
 such as stack maipulation, control flow, flag manipulation and interrupts.
 
-The emulator is a command line tool that is used with the command ./emulator <name of GB ROM> <optional parameters>. At present the optional parameters are "quick_boot" to skip the boot screen and "debug" to open the debugger at startup. 
+The emulator is a command line tool that is used with the command ./emulator "path to GB ROM" "optional parameters". At present the optional parameters are "quick_boot" to skip the boot screen and "debug" to open the debugger at startup. The dmg.bin file should be moved to the same folder as the emulator exe.
 
 Tested games: Teris (World)
 
