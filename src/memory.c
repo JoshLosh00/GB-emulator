@@ -222,6 +222,8 @@ uint8_t mem_read(struct cartridge *cart, cpu *CPU, memory *mem, uint16_t addr){
     }
 }
 
+
+//Unrestricted read is used for the debugger
 uint8_t unrestricted_read(struct cartridge *cart, memory *mem, uint16_t addr){
     if(mem->boot_mapped && addr<0x100){
         return mem->boot_ROM[addr];
