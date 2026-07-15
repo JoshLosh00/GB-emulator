@@ -228,23 +228,6 @@ void ppu(struct cartridge *cart ,cpu *CPU, memory *mem, ppu_data *data){
             }
         }
         
-
-        /*if(LY(mem)<144){
-            if(!(LCDC(mem)&0x80)){
-                if(CPU->LCD_on){
-                    CPU->LCD_off = 1;
-                }
-            } else{
-                CPU->LCD_on = 1;
-            }
-        } else{
-            CPU->LCD_off = 0;
-            CPU->LCD_on = 0;
-        }*/
-
-        //if(CPU->frame_timer==144*456){
-        //    CPU->vblank_rq = 1;
-        //}
         if(LY(mem) == LYC(mem)){
             STAT(mem) |= 0x04;//This is the LY == LYC condition
         } else{
@@ -269,10 +252,3 @@ void ppu(struct cartridge *cart ,cpu *CPU, memory *mem, ppu_data *data){
     
     }
 }
-/*
-Upon entering PPU-off mode LY is set to 0 and the mode is Hblank
-Tetris: For SameBoy the PC does not go to $02b2 after $0407 but it does for me. 
-Likely has to do with behaviour relating to loading LY or another inaccurate hardware register into a CPU reg
-Sameboy also starts drawing the copyright screen 1-2 frames after it reaches $0407
-only like 3-4 VBlank interrupts until it displays anything
-*/
