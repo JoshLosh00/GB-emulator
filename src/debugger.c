@@ -221,24 +221,6 @@ void fps(struct debug_state *debug){
     debug->x = save_x;
 }
 
-// void show(struct debug_state *debug, cpu*CPU, memory *mem, struct cartridge *cart){
-//     int32_t tmp_addr = get_address(debug->command +5,CPU);// command starts with  "show " so this makes sense.
-//     switch(tmp_addr){
-//         case(-1):
-//         draw_line(debug, "Give PC");
-//         break;
-//         case(-2):
-//         draw_line(debug, "Invalid address");
-//         break;
-//         default:{
-//             uint16_t position = tmp_addr;
-//             for (int i = 0; i<4; i++){
-//                 instr(debug, mem, &position);
-//             }
-//         }
-//     }
-// }
-
 void show(struct debug_state *debug, cpu*CPU, memory *mem, struct cartridge *cart){
     uint16_t position = CPU->PC;
     for (int i = 0; i<4; i++){
@@ -303,11 +285,6 @@ void debugger(struct debug_state *debug, struct cartridge *cart, cpu *CPU, memor
     }
     if (debug->on){
         
-        /*
-        for (int i =0; i<strlen(debug->command);i++){
-            draw_glyph(debug, debug->command[i]);
-        }
-        */
         if(debug->broken){
             show(debug, CPU, mem, cart);
             debug->broken = 0;
@@ -335,7 +312,8 @@ void debugger(struct debug_state *debug, struct cartridge *cart, cpu *CPU, memor
         debug->then = now;
 
 
-        //if (debug->timer>target){
+        //Uncomment the following line and corresponding } to only get SDL polling every frame instead of always.  Can lead to unresponsiveness
+        //if (debug->timer>target){ 
             SDL_UpdateTexture(
                 debug->Texture,
                 NULL,
@@ -355,7 +333,6 @@ void debugger(struct debug_state *debug, struct cartridge *cart, cpu *CPU, memor
                     SDL_DestroyRenderer(debug->Renderer);
                     SDL_DestroyWindow(debug->Window);
                 }else if (e.type == SDL_TEXTINPUT){
-                    /* Add new text onto the end of our text */
                     strcat(debug->command, e.text.text);
                     break;
                 }else if (e.type == SDL_KEYDOWN) {
@@ -384,18 +361,9 @@ void debugger(struct debug_state *debug, struct cartridge *cart, cpu *CPU, memor
         //} 
     }
 
-        
-    /*
-    if(debug->on == 0){
-        debug->paused = 0;
-        SDL_DestroyTexture(debug->Texture);
-        SDL_DestroyRenderer(debug->Renderer);
-        SDL_DestroyWindow(debug->Window);
-        //SDL_Quit();
-    }
-        */
 }
-/*
+
+/* This is to test the debugger by itself 
 int main(int argc, char *argv[]){
     cpu CPU = {0};
     struct debug_state dbinstance = {0};
