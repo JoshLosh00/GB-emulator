@@ -7,9 +7,6 @@
 #include <SDL2/SDL.h>
 #include "font8x8_basic.h"
 
-
-//need to implement the debug features
-
 //kind of have x/8 as my cursor 
 
 void newline(struct debug_state *debug){
