@@ -104,16 +104,6 @@
 
 #pragma once
 
-/*struct MBC1{
-    uint8_t RAM_enable;
-    uint8_t ROM_bank_number;
-    uint8_t RAM_bank_number;
-    uint8_t Banking_mode_select;
-    int current_RAM;
-    int current_bank_a;
-    int current_bank_b;
-    int banks;
-};*/
 
 struct cartridge{
     enum {
@@ -143,9 +133,7 @@ typedef struct{
     uint8_t boot_ROM[0x100];
     bool boot_mapped;
 
-    //uint8_t *ROM;//0-7FFF
     uint8_t VRAM[0x2000];//2 banks in gbc mode 8000-9FFF
-    //uint8_t *external_RAM;//A000-BFFF
     uint8_t WRAM[0x2000];//C000-DFFFF, in gbc mode D000-DFFF is switchable
     //Echo ram E000-FDFF
     uint8_t OAM[0xA0];//FE000-FE9F
