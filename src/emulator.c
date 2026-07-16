@@ -466,11 +466,7 @@ int main(int argc, char *argv[]){
             }
         }
     }
-    //will make this into a proper error function.
-    /* here is not to print the log for debugging purposes
-    for(int i = 0; i < LOG_SIZE; i++){
-        printf("PC: %04X opcode: %02X next two bits: %02X %02X A: %02X F: %02X\n", log[i].PC, log[i].opcode, log[i].b1, log[i].b2, log[i].A, log[i].F);
-    }*/
+
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
