@@ -1,9 +1,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include "emulator.h"
-
-//LOOK AT THE GET123/345 REG FUNCTIONS  
+#include "emulator.h" 
 
 static inline uint16_t getHL(cpu *CPU){
     return ((uint16_t) CPU->H << 8) |(uint16_t) CPU->L;
@@ -34,7 +32,6 @@ static inline uint16_t pop16(struct cartridge *cart, cpu *CPU, memory *mem){
     CPU->SP++;
     return (((uint8_t) hi) << 8) | lo;
 
-    //printf("POP  %04X from SP=%04X\n", (((uint8_t) hi) << 8) | lo, CPU->SP);
 }
 static inline void SetCAdd16(uint16_t old, uint16_t value, cpu *CPU){
     if (((uint32_t) old + (uint32_t) value) > 0xFFFF){
@@ -95,7 +92,6 @@ static inline void push16(struct cartridge *cart, cpu *CPU, memory *mem, uint16_
     mem_write(cart, CPU, mem, CPU->SP, hi);
     CPU->SP--;
     mem_write(cart, CPU, mem, CPU->SP, lo);
-    //printf("PUSH %04X at SP=%04X\n", value, CPU->SP);
 }
 static inline void SetCShiftL(cpu *CPU, uint8_t value){
     if((value & 0x80) == 0x80){
@@ -516,7 +512,7 @@ void halt(cpu *CPU){
 }
 
 void ld_r8_r8(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t source, uint8_t dest){
-    uint8_t *d = get345reg(CPU, dest, mem);//come back
+    uint8_t *d = get345reg(CPU, dest, mem);
     uint8_t tmp;
     uint8_t *s;
     if (source == 0x06){
@@ -529,7 +525,6 @@ void ld_r8_r8(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t source, uin
         mem_write(cart, CPU, mem, getHL(CPU), *s);
     }else {
         *d = *s;//destination = source.
-        //The pointer d and the value CPU->reg pointing to the same thing is what makes this work
     }
 }
 
