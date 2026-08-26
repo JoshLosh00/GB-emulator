@@ -29,8 +29,8 @@ static void LCD_1IN3_KEY_Init()
 volatile bool timer_fired = false;
 volatile int i; 
 
+ 
 int64_t alarm_callback(alarm_id_t id, __unused void *user_data) {
-    printf("Timer %d fired!\n", (int) id);
     timer_fired = true;
     // Can return a value here in us to fire in the future
     return 0;

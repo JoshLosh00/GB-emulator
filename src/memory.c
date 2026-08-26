@@ -263,6 +263,7 @@ void mem_write(struct cartridge *cart, cpu *CPU, memory *mem, uint16_t addr, uin
     } else {
         write_std(CPU, mem, addr, value);
     }
+    inspect_state = MEM_WRITE;
 }
 
 uint8_t mem_read(struct cartridge *cart, cpu *CPU, memory *mem, uint16_t addr){
@@ -292,6 +293,7 @@ uint8_t mem_read(struct cartridge *cart, cpu *CPU, memory *mem, uint16_t addr){
     } else if (addr == 0xFFFF){
         return mem->Interrupt_Enable;
     }
+    inspect_state = EXECUTE;
 }
 
 uint8_t unrestricted_read(struct cartridge *cart, memory *mem, uint16_t addr){

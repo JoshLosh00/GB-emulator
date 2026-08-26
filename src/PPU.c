@@ -242,7 +242,6 @@ void mix(memory *mem, ppu_data *data){
 
 
 void ppu(struct cartridge *cart ,cpu *CPU, memory *mem, ppu_data *data){
-    inspect_state = PPU;
     
     //one dot is a quater of a machine cycle 1/2 in GBC double speed mode
     //Probably needs another argument

@@ -186,6 +186,7 @@ typedef struct {
     uint8_t ie_pending;
     uint8_t vblank_rq;
     int frame_timer;
+    int transfer_timer;
     bool halted;
     bool transfer_pending;
     bool transfer;
@@ -272,6 +273,7 @@ typedef struct {//As of now this contains redundant fields.They're needed for th
     int transfer_timer;
     unsigned int countdown;
     int length;
+    int ly_count;
 } ppu_data;
 
 struct state {
@@ -363,10 +365,14 @@ enum inspection_state {
     MEM_READ,
     MEM_WRITE,
     EXECUTE,
-    GENERAL
+    GENERAL,
+    TIMERS,
+    DRAW,
+    DMA,
+    DOT_LOOP
 }; 
 
-extern enum inspection_state inspect_state;
+extern volatile enum inspection_state inspect_state;
 
 // uint8_t waveform[4][8] = {
 //     {1,1,1,1,1,1,1,0},

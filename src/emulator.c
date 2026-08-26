@@ -10,13 +10,14 @@
 #include "pico/stdlib.h"
 
 
-uint32_t frames;
+uint64_t frames;
 
-enum inspection_state inspect_state;
+volatile enum inspection_state inspect_state;
 
-volatile uint32_t statistics[5];
+uint32_t statistics[9];
 
 volatile bool timer_fired = false;
+volatile bool init_alarm = false;
 
 bool repeating_timer_callback(__unused struct repeating_timer *t) {
     switch(inspect_state){
@@ -24,20 +25,24 @@ bool repeating_timer_callback(__unused struct repeating_timer *t) {
         case MEM_READ:      statistics[1]++;    break;
         case MEM_WRITE:     statistics[2]++;    break;
         case EXECUTE:       statistics[3]++;    break;
-        case GENERAL:       statistics[4]++;
+        case GENERAL:       statistics[4]++;    break;
+        case TIMERS:        statistics[5]++;    break;
+        case DRAW:          statistics[6]++;    break;
+        case DMA:           statistics[7]++;    //break;
+        case DOT_LOOP:      statistics[8]++;    //break;
+        
     }
     return true;
 }
 
+int64_t alarm_callback_0(alarm_id_t id, __unused void *user_data) {
+    init_alarm = true;
+    // Can return a value here in us to fire in the future
+    return 0;
+}
+
 int64_t alarm_callback(alarm_id_t id, __unused void *user_data) {
     timer_fired = true;
-    printf("PPU         %llu\n"
-           "MEM_READ    %llu\n"
-           "MEM_WRITE   %llu\n"
-           "EXECUTE     %llu\n"
-           "GENERAL     %llu\n",
-           statistics[0],statistics[1],statistics[2],statistics[3],statistics[4]);
-    printf("Frame counter   %llu", frames);
     // Can return a value here in us to fire in the future
     return 0;
 }
@@ -76,16 +81,17 @@ void assign_joyp(memory *mem, uint8_t joypad){
 
 int emulate(){
 
-    // Call alarm_callback in 20 seconds
-    add_alarm_in_ms(20000, alarm_callback, NULL, false);
+    // set up alarms in 15 seconds
+    add_alarm_in_ms(15000, alarm_callback_0, NULL, false);
 
     struct repeating_timer timer;
-    add_repeating_timer_ms(1, repeating_timer_callback, NULL, &timer);
+    //add_repeating_timer_ms(-1, repeating_timer_callback, NULL, &timer);
 
     dma_finish = true;
 
-    uint16_t buffer[160 * 144];
-    memset(buffer, 0x1257, sizeof(buffer));
+    // uint16_t buffer[160 * 144];
+    // memset(buffer, 0x1257, sizeof(buffer));
+    memset(statistics, 0, sizeof(statistics));
 
     struct cartridge cart = {0};
 
@@ -212,7 +218,6 @@ int emulate(){
     CPU->ie_pending = 0;
     CPU->vblank_rq = 0;
     CPU->halted = 0;
-    CPU->transfer_pending = 0;
     CPU->transfer = 0;
     CPU->VRAM_access = 1;
     CPU->OAM_access = 1;
@@ -288,12 +293,36 @@ int emulate(){
     
     bool cancelled;
 
+    data->ly_count = 0;
 
     while(1){
 
         //assign_joyp(mem, joypad);//The way the joypad works is that it must be continuously updated probably not every call though
 
-        if(timer_fired)     {cancelled = cancel_repeating_timer(&timer); LCD_1IN3_Clear(BLUE); DEV_Delay_ms(10000); timer_fired = 0;}
+        if(init_alarm){
+            add_alarm_in_ms(20000, alarm_callback, NULL, false);
+            add_repeating_timer_ms(-1, repeating_timer_callback, NULL, &timer);
+            init_alarm = false;
+        }
+
+        if(timer_fired){
+            cancelled = cancel_repeating_timer(&timer); 
+            LCD_1IN3_Clear(BLUE); 
+            printf(
+            "PPU         %lu\n"
+            "MEM_READ    %lu\n"
+            "MEM_WRITE   %lu\n"
+            "EXECUTE     %lu\n"
+            "GENERAL     %lu\n"
+            "TIMERS      %lu\n"
+            "DRAW        %lu\n"
+            "DMA         %lu\n"
+            "DOT_LOOP    %lu\n",
+            statistics[0],statistics[1],statistics[2],statistics[3],statistics[4],statistics[5],statistics[6],statistics[7],statistics[8]);
+            printf("Frame counter   %llu", frames);
+            DEV_Delay_ms(4000); 
+            timer_fired = 0;
+        }
 
         uint8_t prev_DIV = DIV(mem);
 
@@ -307,6 +336,7 @@ int emulate(){
         //     audio_data.DIV_APU++;
         // }
 
+        inspect_state = TIMERS;
         if(TAC(mem) & 0x04){//TIMA
             switch(TAC(mem) & 0x03){
                 case 0x00:
@@ -333,6 +363,7 @@ int emulate(){
                 IF(mem) |= 0x04;
             }
         }
+        inspect_state = GENERAL;
 
         switch(CPU->ie_pending){
             case(1):
@@ -359,33 +390,54 @@ int emulate(){
             inspect_state = EXECUTE;
             cycles = execute(&cart, CPU, mem);
             inspect_state = GENERAL;
+            if(CPU->transfer){//tranfers take 640 dots in normal speed or 320 in double speed
+                data->transfer_timer += cycles;
+                if(data->transfer_timer >= 640){//this means we get 640 iterations of the loop when this flag is active (values 0 to 639)
+                    CPU->transfer = 0;
+                }
+            }
+        }
+
+        if(CPU->transfer){//tranfers take 640 dots in normal speed or 320 in double speed
+            data->transfer_timer++;
+            if(data->transfer_timer == 640){//this means we get 640 iterations of the loop when this flag is active (values 0 to 639)
+                data->transfer = 0;
+                CPU->transfer = 0;
+            }
         }
 
         //actions which take place every dot
         for(int i=0; i<4*cycles; i++){
+            inspect_state = DOT_LOOP;
 
             if((LCDC(mem)&0x80) == 0){//LCD off
                 //mode = 0;
-                LY(mem) = 0;
-                CPU->OAM_access = 1;
-                CPU->VRAM_access = 1;
-                data->countdown = 0;
-                data->finish = 0;
-                data->length = 0;
+                //if ... {
+                    LY(mem) = 0;
+                    CPU->OAM_access = 1;
+                    CPU->VRAM_access = 1;
+                    data->countdown = 0;
+                    data->finish = 0;
+                    data->length = 0;
+                    data->ly_count = 0;
+                //}
             } else{
                 if(data->countdown == 0){
+                    inspect_state = PPU;
                     ppu(&cart, CPU, mem, data);
-                    inspect_state = GENERAL;
+                    inspect_state = DOT_LOOP;
+                }
+                if(++data->ly_count == 456){
+                    LY(mem)++;
+                    if(LY(mem) == 154)  LY(mem) = 0;
+                    if(LY(mem) == LYC(mem)){
+                        STAT(mem) |= 0x04;//This is the LY == LYC condition
+                    } else{
+                        STAT(mem) &= ~0x04;//
+                    }
+                    data->ly_count = 0;
                 }
                 data->countdown--;
-
-                LY(mem) = CPU->frame_timer/456;
-
-                if(LY(mem) == LYC(mem)){
-                    STAT(mem) |= 0x04;//This is the LY == LYC condition
-                } else{
-                    STAT(mem) &= ~0x04;//
-                }
             }
 
             if(data->transfer){//tranfers take 640 dots in normal speed or 320 in double speed
@@ -397,11 +449,13 @@ int emulate(){
             }
 
             if(CPU->transfer_pending){
+                inspect_state = DMA;
                 OAM_DMA_Transfer(&cart, mem);
                 CPU->transfer = 1;
                 CPU->transfer_pending = 0;
                 data->transfer = 1;
                 data->transfer_timer = 0;
+                inspect_state = DOT_LOOP;
             }
             //apu
 
@@ -412,9 +466,11 @@ int emulate(){
                 CPU->frame_timer++;
             }
         }
+        inspect_state = GENERAL;
 
-        CPU->F &= 0xF0;
+        //CPU->F &= 0xF0;
         if(CPU->draw){
+            inspect_state = DRAW;
             if(dma_finish){
                 LCD_1IN3_DisplayWindows(0, 0, 160, 144, data->framebuffer);
                 dma_finish = 0;
@@ -433,6 +489,7 @@ int emulate(){
 
             assign_joyp(mem, joypad);
             frames++;
+            inspect_state = GENERAL;
         }
 
         //For test rom validation
