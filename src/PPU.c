@@ -240,8 +240,8 @@ void mix(memory *mem, ppu_data *data){
     //printf("scanx is %d \nincrement is %d \n", data->scanx, data->increment);
 }
 
-
-void ppu(struct cartridge *cart ,cpu *CPU, memory *mem, ppu_data *data){
+//the returned value is how long the performed actions takes
+int ppu(struct cartridge *cart ,cpu *CPU, memory *mem, ppu_data *data){
     
     //one dot is a quater of a machine cycle 1/2 in GBC double speed mode
     //Probably needs another argument
@@ -257,17 +257,17 @@ void ppu(struct cartridge *cart ,cpu *CPU, memory *mem, ppu_data *data){
     uint8_t mode;
     if(LY(mem) == 144){//I only do this once, ppu never gets accessed if ly > 144.
         //nothing happens and all video memory is accessible
-        data->countdown = 4560; 
+        //data->countdown = 4560; 
         IF(mem) |= 0x01;//requesting inteerrupt
         CPU->draw = 1;
         CPU->OAM_access = 1;
         CPU->VRAM_access = 1;
         mode = 1;
+        return 4560; 
         //nothing happens and all video memory is accessible
     } else{
         if(scanline_dots < 80){//to do set memory
             //this process takes 2 dots
-            data->countdown = 2;
             //mode 2 - OAM scan
             //VRAM and GBC palettes are accessible
             if(scanline_dots == 0){
@@ -275,6 +275,8 @@ void ppu(struct cartridge *cart ,cpu *CPU, memory *mem, ppu_data *data){
                 // puts("mode 2");
                 // fflush(stdout);
                 data->nobjects = 0;
+                STAT(mem) &= 0xFC;//clearing the last 2 bits
+                STAT(mem) |= mode;
                 //mode and memory access conditions are here so I only have to execute these instructions once
                 mode = 2;
                 //CPU->OAM_access = 0;
@@ -290,10 +292,10 @@ void ppu(struct cartridge *cart ,cpu *CPU, memory *mem, ppu_data *data){
                     data->nobjects++;//important: the objects array stores objects in the order in which they occur in OAM   
                 }
             }
-
+            return 2;
         } else if((scanline_dots >= 80) && (!data->finish)){
             //each block in my mode 3 takes 8 dots
-            data->countdown = 8;
+            //data->countdown = 8;
             if(scanline_dots == 80){
                 data->length = 0;
                 // puts("mode 3");
@@ -303,6 +305,8 @@ void ppu(struct cartridge *cart ,cpu *CPU, memory *mem, ppu_data *data){
                 data->fetch_x = 0;
                 data->scanx = 0;
                 mode = 3;
+                STAT(mem) &= 0xFC;//clearing the last 2 bits
+                STAT(mem) |= mode;
                 //CPU->OAM_access = 0;
                 //CPU->VRAM_access = 0;
                 data->object_start = 0;
@@ -315,19 +319,21 @@ void ppu(struct cartridge *cart ,cpu *CPU, memory *mem, ppu_data *data){
             data->length += 8;
             if(data->scanx >= 160)  data->finish = 1;
 
+            return 8;
+
         } else{
             //Hblank
-            data->countdown = 456 - 80 - data->length;
+            // data->countdown = 456 - 80 - data->length;
             mode = 0;
             CPU->OAM_access = 1;
             CPU->VRAM_access = 1;
+            STAT(mem) &= 0xFC;//clearing the last 2 bits
+            STAT(mem) |= mode;
             //configure memory access
+
+            return 456 - 80 - data->length;
         }
     }
-    
-
-    STAT(mem) &= 0xFC;//clearing the last 2 bits
-    STAT(mem) |= mode;
     
 }
 /*

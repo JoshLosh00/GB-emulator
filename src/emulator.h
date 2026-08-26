@@ -332,7 +332,8 @@ typedef struct {
     op_format format;
 } op_info;
 
-void ppu(struct cartridge *cart, cpu *CPU, memory *mem, ppu_data *data);
+//the returned value is how long the performed actions takes
+int ppu(struct cartridge *cart, cpu *CPU, memory *mem, ppu_data *data);
 
 uint32_t execute(struct cartridge *cart, cpu *CPU, memory *mem);
 

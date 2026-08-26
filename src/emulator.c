@@ -111,6 +111,7 @@ int emulate(){
     static int counter = 0;
     int log_counter = 0;
     int countdown = 0;
+    int ppu_countdown = 0;
     uint64_t start = 0;
     uint8_t joypad = 0xFF; //Bits 0-3 are D-pad, 4-7 are the others
 
@@ -416,15 +417,15 @@ int emulate(){
                     LY(mem) = 0;
                     CPU->OAM_access = 1;
                     CPU->VRAM_access = 1;
-                    data->countdown = 0;
+                    ppu_countdown = 0;
                     data->finish = 0;
                     data->length = 0;
                     data->ly_count = 0;
                 //}
             } else{
-                if(data->countdown == 0){
+                if(ppu_countdown == 0){
                     inspect_state = PPU;
-                    ppu(&cart, CPU, mem, data);
+                    ppu_countdown = ppu(&cart, CPU, mem, data);
                     inspect_state = DOT_LOOP;
                 }
                 if(++data->ly_count == 456){
@@ -437,7 +438,7 @@ int emulate(){
                     }
                     data->ly_count = 0;
                 }
-                data->countdown--;
+                ppu_countdown--;
             }
 
             if(data->transfer){//tranfers take 640 dots in normal speed or 320 in double speed
