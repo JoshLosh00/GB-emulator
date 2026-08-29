@@ -112,11 +112,13 @@ int emulate(){
     int log_counter = 0;
     int countdown = 0;
     int ppu_countdown = 0;
+    int transfer_timer = 0;
     uint64_t start = 0;
     uint8_t joypad = 0xFF; //Bits 0-3 are D-pad, 4-7 are the others
 
     bool leave = 0;
     bool quick_boot = 0;
+    bool OAM_transfer = false;
 
     if(DEV_Module_Init()!=0){
         return -1;
@@ -295,6 +297,7 @@ int emulate(){
     bool cancelled;
 
     data->ly_count = 0;
+    data->mode = MODE2;
 
     while(1){
 
@@ -308,6 +311,7 @@ int emulate(){
 
         if(timer_fired){
             cancelled = cancel_repeating_timer(&timer); 
+            while(!dma_finish){}
             LCD_1IN3_Clear(BLUE); 
             printf(
             "PPU         %lu\n"
@@ -399,16 +403,42 @@ int emulate(){
             }
         }
 
-        if(CPU->transfer){//tranfers take 640 dots in normal speed or 320 in double speed
-            data->transfer_timer++;
-            if(data->transfer_timer == 640){//this means we get 640 iterations of the loop when this flag is active (values 0 to 639)
-                data->transfer = 0;
-                CPU->transfer = 0;
-            }
+        // if(CPU->transfer){//tranfers take 640 dots in normal speed or 320 in double speed
+        //     data->transfer_timer++;
+        //     if(data->transfer_timer == 640){//this means we get 640 iterations of the loop when this flag is active (values 0 to 639)
+        //         data->transfer = 0;
+        //         CPU->transfer = 0;
+        //     }
+        // }
+
+        // if(data->transfer){//tranfers take 640 dots in normal speed or 320 in double speed
+        //         data->transfer_timer += 4*cycles;
+        //         if(data->transfer_timer == 640){//this means we get 640 iterations of the loop when this flag is active (values 0 to 639)
+        //             data->transfer = 0;
+        //             CPU->transfer = 0;
+        //         }
+        //     }
+
+        if(CPU->transfer_pending){
+            //printf("transfer\n");
+            inspect_state = DMA;
+            OAM_DMA_Transfer(&cart, mem);
+            OAM_transfer = true;
+            CPU->transfer_pending = false;
         }
 
+        if(CPU->transfer){
+            transfer_timer += 4*cycles;
+            if(transfer_timer >= 640){
+                transfer_timer = 0;
+                CPU->transfer = false;
+            }
+            inspect_state = DOT_LOOP;
+        }
+
+
         //actions which take place every dot
-        for(int i=0; i<4*cycles; i++){
+        for(int i=0; i<cycles; i++){
             inspect_state = DOT_LOOP;
 
             if((LCDC(mem)&0x80) == 0){//LCD off
@@ -421,14 +451,16 @@ int emulate(){
                     data->finish = 0;
                     data->length = 0;
                     data->ly_count = 0;
+                    data->mode = MODE2;
                 //}
             } else{
-                if(ppu_countdown == 0){
+                if(ppu_countdown <= 0){
                     inspect_state = PPU;
                     ppu_countdown = ppu(&cart, CPU, mem, data);
                     inspect_state = DOT_LOOP;
                 }
-                if(++data->ly_count == 456){
+                data->ly_count +=4;
+                if(data->ly_count >= 456){
                     LY(mem)++;
                     if(LY(mem) == 154)  LY(mem) = 0;
                     if(LY(mem) == LYC(mem)){
@@ -438,34 +470,17 @@ int emulate(){
                     }
                     data->ly_count = 0;
                 }
-                ppu_countdown--;
+                ppu_countdown -= 4;
             }
 
-            if(data->transfer){//tranfers take 640 dots in normal speed or 320 in double speed
-                data->transfer_timer++;
-                if(data->transfer_timer == 640){//this means we get 640 iterations of the loop when this flag is active (values 0 to 639)
-                    data->transfer = 0;
-                    CPU->transfer = 0;
-                }
-            }
-
-            if(CPU->transfer_pending){
-                inspect_state = DMA;
-                OAM_DMA_Transfer(&cart, mem);
-                CPU->transfer = 1;
-                CPU->transfer_pending = 0;
-                data->transfer = 1;
-                data->transfer_timer = 0;
-                inspect_state = DOT_LOOP;
-            }
             //apu
 
 
-            if(CPU->frame_timer >= 70223){//one frame has passed
-            CPU->frame_timer= 0;
-            } else{
-                CPU->frame_timer++;
-            }
+            // if(CPU->frame_timer >= 70223){//one frame has passed
+            // CPU->frame_timer= 0;
+            // } else{
+            //     CPU->frame_timer++;
+            // }
         }
         inspect_state = GENERAL;
 

@@ -270,10 +270,19 @@ typedef struct {//As of now this contains redundant fields.They're needed for th
     uint16_t framebuffer[144 * 160];
     bool transfer;
     bool finish;
+    bool init_mode3;
     int transfer_timer;
     unsigned int countdown;
     int length;
     int ly_count;
+
+    enum {
+        MODE0,
+        MODE1,
+        MODE2,
+        MODE3
+    } mode;
+
 } ppu_data;
 
 struct state {

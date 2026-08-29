@@ -11,7 +11,7 @@ void write_IO(cpu *CPU, memory *mem, uint16_t addr, uint8_t value){
         break;
         case(DMAaddr):
         DMA(mem) = value;
-        CPU->transfer_pending = 1;
+        CPU->transfer_pending = true;
         break;
         case(LCDCaddr):{
             if((LCDC(mem)&0x80)&&((value & 0x80) == 0)){//on to off 

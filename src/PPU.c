@@ -253,50 +253,65 @@ int ppu(struct cartridge *cart ,cpu *CPU, memory *mem, ppu_data *data){
     //uint8_t scanline_dots = CPU->frame_timer % 456;
     //uint8_t mode;
 
-    uint8_t scanline_dots = CPU->frame_timer % 456;
+    //uint8_t scanline_dots = CPU->frame_timer % 456;
     uint8_t mode;
-    if(LY(mem) == 144){//I only do this once, ppu never gets accessed if ly > 144.
-        //nothing happens and all video memory is accessible
-        //data->countdown = 4560; 
-        IF(mem) |= 0x01;//requesting inteerrupt
-        CPU->draw = 1;
-        CPU->OAM_access = 1;
-        CPU->VRAM_access = 1;
-        mode = 1;
-        return 4560; 
-        //nothing happens and all video memory is accessible
-    } else{
-        if(scanline_dots < 80){//to do set memory
+
+    switch(data->mode){
+        case MODE1:{
+            //I only do this once, ppu never gets accessed if ly > 144.
+            //nothing happens and all video memory is accessible
+            //data->countdown = 4560; 
+            IF(mem) |= 0x01;//requesting inteerrupt
+            CPU->draw = 1;
+            CPU->OAM_access = 1;
+            CPU->VRAM_access = 1;
+            mode = 1;
+            data->mode = MODE2;
+            return 4560; 
+            //nothing happens and all video memory is accessible
+        }
+
+        case MODE2:{
             //this process takes 2 dots
             //mode 2 - OAM scan
             //VRAM and GBC palettes are accessible
-            if(scanline_dots == 0){
-                if(data->finish)    data->finish = 0;
-                // puts("mode 2");
-                // fflush(stdout);
-                data->nobjects = 0;
-                STAT(mem) &= 0xFC;//clearing the last 2 bits
-                STAT(mem) |= mode;
-                //mode and memory access conditions are here so I only have to execute these instructions once
-                mode = 2;
-                //CPU->OAM_access = 0;
-                //CPU->VRAM_access = 1;
-            } 
+            if(data->finish)    data->finish = 0;
+            // puts("mode 2");
+            // fflush(stdout);
+            data->nobjects = 0;
+            STAT(mem) &= 0xFC;//clearing the last 2 bits
+            STAT(mem) |= mode;
+            //mode and memory access conditions are here so I only have to execute these instructions once
+            mode = 2;
+            //CPU->OAM_access = 0;
+            //CPU->VRAM_access = 1;
             //looks for objects on this scan-line
-            int i = scanline_dots * 2; // inxeding through the 160 bytes of OAM in intervals of 4
+            //int i = scanline_dots * 2; // inxeding through the 160 bytes of OAM in intervals of 4
+    
             uint8_t height = (LCDC(mem) & 0x04) ? 16 : 8;
-            if(data->nobjects<10){
-                //if objects glitch think about returning this to previous version
-                if(((LY(mem)+16) >= mem->OAM[i]) &&  ((LY(mem)+16) < (mem->OAM[i] + height))){//The height of objects is 16 is bit 2 of LCDC is set and 8 is not
-                    data->objects[data->nobjects] = i;//the location of byte 0 of that object
-                    data->nobjects++;//important: the objects array stores objects in the order in which they occur in OAM   
-                }
+    
+            for(int i = 0; i < 160; i += 4){
+                if(data->nobjects<10){
+                    //if objects glitch think about returning this to previous version
+                    if(((LY(mem)+16) >= mem->OAM[i]) &&  ((LY(mem)+16) < (mem->OAM[i] + height))){//The height of objects is 16 is bit 2 of LCDC is set and 8 is not
+                        data->objects[data->nobjects] = i;//the location of byte 0 of that object
+                        data->nobjects++;//important: the objects array stores objects in the order in which they occur in OAM   
+                    }
+                } 
+                else      break;
             }
-            return 2;
-        } else if((scanline_dots >= 80) && (!data->finish)){
+            
+            data->mode = MODE3;
+            data->init_mode3 = true;
+
+            return 80;
+        } 
+
+        case MODE3:{
             //each block in my mode 3 takes 8 dots
             //data->countdown = 8;
-            if(scanline_dots == 80){
+            if(data->init_mode3){
+                data->init_mode3 = false;
                 data->length = 0;
                 // puts("mode 3");
                 // fflush(stdout);
@@ -317,11 +332,15 @@ int ppu(struct cartridge *cart ,cpu *CPU, memory *mem, ppu_data *data){
             populate_objects(mem,data);
             mix(mem,data);
             data->length += 8;
-            if(data->scanx >= 160)  data->finish = 1;
-
+            if(data->scanx >= 160){
+                data->finish = 1;
+                data->mode = MODE0;
+            }
             return 8;
 
-        } else{
+        }
+
+        case MODE0:{
             //Hblank
             // data->countdown = 456 - 80 - data->length;
             mode = 0;
@@ -329,13 +348,107 @@ int ppu(struct cartridge *cart ,cpu *CPU, memory *mem, ppu_data *data){
             CPU->VRAM_access = 1;
             STAT(mem) &= 0xFC;//clearing the last 2 bits
             STAT(mem) |= mode;
+
+            if(LY(mem) == 143)      data->mode = MODE1;
+            else                    data->mode = MODE2;
             //configure memory access
 
             return 456 - 80 - data->length;
         }
     }
-    
 }
+//     if(LY(mem) == 144){//I only do this once, ppu never gets accessed if ly > 144.
+//         //nothing happens and all video memory is accessible
+//         //data->countdown = 4560; 
+//         IF(mem) |= 0x01;//requesting inteerrupt
+//         CPU->draw = 1;
+//         CPU->OAM_access = 1;
+//         CPU->VRAM_access = 1;
+//         mode = 1;
+//         data->mode = MODE2;
+//         return 4560; 
+//         //nothing happens and all video memory is accessible
+//     } else{
+//         if(scanline_dots < 80){//to do set memory
+//             //this process takes 2 dots
+//             //mode 2 - OAM scan
+//             //VRAM and GBC palettes are accessible
+//             if(scanline_dots == 0){
+//                 if(data->finish)    data->finish = 0;
+//                 // puts("mode 2");
+//                 // fflush(stdout);
+//                 data->nobjects = 0;
+//                 STAT(mem) &= 0xFC;//clearing the last 2 bits
+//                 STAT(mem) |= mode;
+//                 //mode and memory access conditions are here so I only have to execute these instructions once
+//                 mode = 2;
+//                 //CPU->OAM_access = 0;
+//                 //CPU->VRAM_access = 1;
+//             } 
+//             //looks for objects on this scan-line
+//             int i = scanline_dots * 2; // inxeding through the 160 bytes of OAM in intervals of 4
+//             uint8_t height = (LCDC(mem) & 0x04) ? 16 : 8;
+//             if(data->nobjects<10){
+//                 //if objects glitch think about returning this to previous version
+//                 if(((LY(mem)+16) >= mem->OAM[i]) &&  ((LY(mem)+16) < (mem->OAM[i] + height))){//The height of objects is 16 is bit 2 of LCDC is set and 8 is not
+//                     data->objects[data->nobjects] = i;//the location of byte 0 of that object
+//                     data->nobjects++;//important: the objects array stores objects in the order in which they occur in OAM   
+//                 }
+//             }
+
+//             if(scanline_dots >=78){
+//                 data->mode = MODE3;
+//             }
+
+//             return 2;
+//         } else if((scanline_dots >= 80) && (!data->finish)){
+//             //each block in my mode 3 takes 8 dots
+//             //data->countdown = 8;
+//             if(scanline_dots == 80){
+//                 data->length = 0;
+//                 // puts("mode 3");
+//                 // fflush(stdout);
+//                 memset(data->BGcolours,0,8);
+//                 memset(data->obj_scanline,0,160);
+//                 data->fetch_x = 0;
+//                 data->scanx = 0;
+//                 mode = 3;
+//                 STAT(mem) &= 0xFC;//clearing the last 2 bits
+//                 STAT(mem) |= mode;
+//                 //CPU->OAM_access = 0;
+//                 //CPU->VRAM_access = 0;
+//                 data->object_start = 0;
+//                 data->finish = 0;
+//             }
+
+//             get_tile(mem,data);
+//             populate_objects(mem,data);
+//             mix(mem,data);
+//             data->length += 8;
+//             if(data->scanx >= 160){
+//                 data->finish = 1;
+//                 data->mode = MODE0;
+//             }
+//             return 8;
+
+//         } else{
+//             //Hblank
+//             // data->countdown = 456 - 80 - data->length;
+//             mode = 0;
+//             CPU->OAM_access = 1;
+//             CPU->VRAM_access = 1;
+//             STAT(mem) &= 0xFC;//clearing the last 2 bits
+//             STAT(mem) |= mode;
+
+//             if(LY(mem) == 143)      data->mode = MODE1;
+//             else                    data->mode = MODE2;
+//             //configure memory access
+
+//             return 456 - 80 - data->length;
+//         }
+//     }
+    
+// }
 /*
 Upon entering PPU-off mode LY is set to 0 and the mode is Hblank
 Tetris: For SameBoy the PC does not go to $02b2 after $0407 but it does for me. 
