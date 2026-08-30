@@ -43,13 +43,19 @@ void write_IO(cpu *CPU, memory *mem, uint16_t addr, uint8_t value){
         case(NR14addr):{
             //"Writing any value to NR14 with bit 7 set triggers the channel"
             //so it seems as though it's correct to check this before changing the value. 
+            CPU->length_enable[0] = value & (1<<6);
+
             if(NR14(mem) & 0x80){
                 CPU->audio_triggers[0] = 1;
             }
             mem->IO[addr - 0xFF00] = value;
+            // if(NR14(mem) & 0x80){
+            //     CPU->audio_triggers[0] = 1;
+            // }
             break;
         }
         case(NR24addr):{
+            CPU->length_enable[1] = value & (1<<6);
             if(NR14(mem) & 0x80){
                 CPU->audio_triggers[1] = 1;
             }
@@ -57,6 +63,7 @@ void write_IO(cpu *CPU, memory *mem, uint16_t addr, uint8_t value){
             break;
         }
         case(NR34addr):{
+            CPU->length_enable[2] = value & (1<<6);
             if(NR34(mem) & 0x80){
                 CPU->audio_triggers[2] = 1;
             }
@@ -64,6 +71,7 @@ void write_IO(cpu *CPU, memory *mem, uint16_t addr, uint8_t value){
             break;
         }
         case(NR44addr):{
+            CPU->length_enable[3] = value & (1<<6);
             if(NR44(mem) & 0x80){
                 CPU->audio_triggers[3] = 1;
             }

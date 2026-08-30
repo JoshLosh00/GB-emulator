@@ -2,6 +2,8 @@
 #include <stdbool.h>
 #include "LCD_1in3.h"
 #include "DEV_Config.h"
+#include "audio_data.h"
+#include "audio_pio.h"
 // #include "01-special.h"
 // #include "dmg.h"
 //#include <SDL2/SDL.h>
@@ -197,17 +199,10 @@ typedef struct {
     //flags to (re)trigger audio channels
     //These do not really conceptually belong here. I'll put them here for now but will change
     bool audio_triggers[4];
+    bool length_enable[4];
 } cpu;
 
-/*
 typedef struct{
-    //references to the memory addresses stored in the memory structure
-    //DO NOT reallocate memory without considering how it affects the APU 
-    uint8_t *NRX1[4];
-    uint8_t *NRX2[4];
-    uint8_t *NRX3[4];
-    uint8_t *NRX4[4];
-
 
     uint16_t DIV_APU;
     uint16_t prev_DIV;
@@ -251,7 +246,6 @@ typedef struct{
     //"writing to those does not enable or disable the channels, despite many emulators behaving as if it does." 
     bool channel_status[4];
 } apu_data;
-*/
 
 typedef struct {//As of now this contains redundant fields.They're needed for the FIFO
     int nobjects;
@@ -368,6 +362,11 @@ void OAM_DMA_Transfer(struct cartridge *cart, memory *mem);
 
 extern op_info operations[512];
 
+void apu(memory *mem, apu_data *data, cpu *CPU/*I only need the frame timer, should probably take this out of the CPU struct*/);
+
+uint16_t get_sample_left(apu_data *data, memory *mem);
+uint16_t get_sample_right(apu_data *data, memory *mem);
+
 //extern volatile uint32_t statistics[5];
 
 enum inspection_state {
@@ -379,7 +378,8 @@ enum inspection_state {
     TIMERS,
     DRAW,
     DMA,
-    DOT_LOOP
+    DOT_LOOP,
+    APU
 }; 
 
 extern volatile enum inspection_state inspect_state;

@@ -14,7 +14,7 @@ uint64_t frames;
 
 volatile enum inspection_state inspect_state;
 
-uint32_t statistics[9];
+uint32_t statistics[10];
 
 volatile bool timer_fired = false;
 volatile bool init_alarm = false;
@@ -28,8 +28,9 @@ bool repeating_timer_callback(__unused struct repeating_timer *t) {
         case GENERAL:       statistics[4]++;    break;
         case TIMERS:        statistics[5]++;    break;
         case DRAW:          statistics[6]++;    break;
-        case DMA:           statistics[7]++;    //break;
-        case DOT_LOOP:      statistics[8]++;    //break;
+        case DMA:           statistics[7]++;    break;
+        case DOT_LOOP:      statistics[8]++;    break;
+        case APU:           statistics[9]++;    break;
         
     }
     return true;
@@ -84,6 +85,13 @@ int emulate(){
     // set up alarms in 15 seconds
     add_alarm_in_ms(15000, alarm_callback_0, NULL, false);
 
+    apu_data audio_data = {0};
+
+    audio_data.DIV_APU = 0;
+    audio_data.prev_DIV = 0;
+    audio_data.tick = 0;
+    uint32_t audio_timer = 0;
+
     struct repeating_timer timer;
     //add_repeating_timer_ms(-1, repeating_timer_callback, NULL, &timer);
 
@@ -118,7 +126,6 @@ int emulate(){
 
     bool leave = 0;
     bool quick_boot = 0;
-    bool OAM_transfer = false;
 
     if(DEV_Module_Init()!=0){
         return -1;
@@ -322,8 +329,9 @@ int emulate(){
             "TIMERS      %lu\n"
             "DRAW        %lu\n"
             "DMA         %lu\n"
-            "DOT_LOOP    %lu\n",
-            statistics[0],statistics[1],statistics[2],statistics[3],statistics[4],statistics[5],statistics[6],statistics[7],statistics[8]);
+            "DOT_LOOP    %lu\n"
+            "APU         %lu\n",
+            statistics[0],statistics[1],statistics[2],statistics[3],statistics[4],statistics[5],statistics[6],statistics[7],statistics[8],statistics[9]);
             printf("Frame counter   %llu", frames);
             DEV_Delay_ms(4000); 
             timer_fired = 0;
@@ -337,9 +345,10 @@ int emulate(){
             div_timer -= 64;
         }
 
-        // if(((prev_DIV & 0x10) - (DIV(mem) & 0x10)) == 0x10){//falling edge
-        //     audio_data.DIV_APU++;
-        // }
+        if(((prev_DIV & 0x10) - (DIV(mem) & 0x10)) == 0x10){//falling edge
+            audio_data.prev_DIV = audio_data.DIV_APU;
+            audio_data.DIV_APU++;
+        }
 
         inspect_state = TIMERS;
         if(TAC(mem) & 0x04){//TIMA
@@ -423,7 +432,6 @@ int emulate(){
             //printf("transfer\n");
             inspect_state = DMA;
             OAM_DMA_Transfer(&cart, mem);
-            OAM_transfer = true;
             CPU->transfer_pending = false;
         }
 
@@ -438,6 +446,7 @@ int emulate(){
 
 
         //actions which take place every dot
+        //the loop has been compressed here
         for(int i=0; i<cycles; i++){
             inspect_state = DOT_LOOP;
 
@@ -471,6 +480,13 @@ int emulate(){
                     data->ly_count = 0;
                 }
                 ppu_countdown -= 4;
+
+                inspect_state = APU;
+                for(int j = 0; j<4; j++){
+                    apu(mem, &audio_data, CPU);
+                    if(++CPU->frame_timer == 64)    CPU->frame_timer = 0;
+                }
+
             }
 
             //apu

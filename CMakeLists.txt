@@ -49,10 +49,15 @@ add_executable(pico-emulator
     src/cpu.c
     src/ppu.c
     src/memory.c
+    src/apu.c
 
     lib/Config/DEV_Config.c
     lib/LCD/LCD_1in3.c
+    lib/audio_pio/audio_pio.c
+    lib/audio_data/audio_data.c
 )
+
+pico_generate_pio_header(pico-emulator ${CMAKE_CURRENT_LIST_DIR}/audio_pio.pio)
 
 pico_set_program_name(pico-emulator "pico-emulator")
 pico_set_program_version(pico-emulator "0.1")
@@ -65,6 +70,8 @@ target_include_directories(pico-emulator PRIVATE
     ${PROJECT_SOURCE_DIR}/src
     ${PROJECT_SOURCE_DIR}/lib/Config
     ${PROJECT_SOURCE_DIR}/lib/LCD
+    ${PROJECT_SOURCE_DIR}/lib/audio_data
+    ${PROJECT_SOURCE_DIR}/lib/audio_pio
 )
 
 target_link_libraries(pico-emulator
@@ -74,6 +81,7 @@ target_link_libraries(pico-emulator
     hardware_i2c
     hardware_adc
     hardware_pwm
+    hardware_pio
 )
 
 pico_add_extra_outputs(pico-emulator)
