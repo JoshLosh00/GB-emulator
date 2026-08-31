@@ -14,7 +14,7 @@ uint64_t frames;
 
 volatile enum inspection_state inspect_state;
 
-uint32_t statistics[10];
+uint32_t statistics[11];
 
 volatile bool timer_fired = false;
 volatile bool init_alarm = false;
@@ -31,6 +31,7 @@ bool repeating_timer_callback(__unused struct repeating_timer *t) {
         case DMA:           statistics[7]++;    break;
         case DOT_LOOP:      statistics[8]++;    break;
         case APU:           statistics[9]++;    break;
+        case JOYPAD:        statistics[10]++;   break;
         
     }
     return true;
@@ -82,6 +83,29 @@ void assign_joyp(memory *mem, uint8_t joypad){
 
 int emulate(){
 
+    pio_init(); 
+
+    uint8_t keyA = 15; 
+    uint8_t keyB = 17; 
+    uint8_t keyX = 19; 
+    uint8_t keyY = 21;
+
+    uint8_t up = 2;
+	uint8_t down = 18;
+	uint8_t left = 16;
+	uint8_t right = 20;
+   
+
+    SET_Infrared_PIN(keyA);    
+    SET_Infrared_PIN(keyB);
+    SET_Infrared_PIN(keyX);
+    SET_Infrared_PIN(keyY);
+		 
+	SET_Infrared_PIN(up);
+    SET_Infrared_PIN(down);
+    SET_Infrared_PIN(left);
+    SET_Infrared_PIN(right);
+
     // set up alarms in 15 seconds
     add_alarm_in_ms(15000, alarm_callback_0, NULL, false);
 
@@ -125,7 +149,7 @@ int emulate(){
     uint8_t joypad = 0xFF; //Bits 0-3 are D-pad, 4-7 are the others
 
     bool leave = 0;
-    bool quick_boot = 0;
+    bool quick_boot = 1;
 
     if(DEV_Module_Init()!=0){
         return -1;
@@ -306,8 +330,28 @@ int emulate(){
     data->ly_count = 0;
     data->mode = MODE2;
 
+    int ch4_counter = 0;
+    long int audio_phase = 0;
+
+    int sample_size = 0;
+    int sample_index = 0;
+    static int32_t samples[64] __attribute__((aligned(256)));
+    memset(samples, 0, sizeof(samples));
+
+     //   int32_t *samples = (int32_t *)calloc(100, sizeof(int32_t));//(int32_t *)data_treating( sine_wave_table , 256 );
+	for(int i = 0; i < 64; i++){
+		samples[i] = i & 0x8 ? 0x1000 * 65536 : 0xF000 * 65536;
+	}
+	for(int i = 0; i < 64; i++){
+		samples[i] |= ((i /20) & 1) ? 0x1000: 0xF000;
+	}
+
     while(1){
 
+        inspect_state = JOYPAD;
+
+        assign_joyp(mem, joypad);
+        inspect_state = GENERAL;
         //assign_joyp(mem, joypad);//The way the joypad works is that it must be continuously updated probably not every call though
 
         if(init_alarm){
@@ -330,8 +374,9 @@ int emulate(){
             "DRAW        %lu\n"
             "DMA         %lu\n"
             "DOT_LOOP    %lu\n"
-            "APU         %lu\n",
-            statistics[0],statistics[1],statistics[2],statistics[3],statistics[4],statistics[5],statistics[6],statistics[7],statistics[8],statistics[9]);
+            "APU         %lu\n"
+            "JOYPAD      %lu\n",
+            statistics[0],statistics[1],statistics[2],statistics[3],statistics[4],statistics[5],statistics[6],statistics[7],statistics[8],statistics[9],statistics[10]);
             printf("Frame counter   %llu", frames);
             DEV_Delay_ms(4000); 
             timer_fired = 0;
@@ -348,6 +393,7 @@ int emulate(){
         if(((prev_DIV & 0x10) - (DIV(mem) & 0x10)) == 0x10){//falling edge
             audio_data.prev_DIV = audio_data.DIV_APU;
             audio_data.DIV_APU++;
+            //DIV APU STUFF
         }
 
         inspect_state = TIMERS;
@@ -396,13 +442,13 @@ int emulate(){
         if(CPU->IME && pending){
             for(int i = 0; i<5; i++){
                 if(pending & (1<<i)){
-                    cycles = interrupt_service(&cart,CPU,mem,i);//always 5
+                    cycles = interrupt_service(&audio_data, &cart,CPU,mem,i);//always 5
                     break;
                 }
             }
         } else{
             inspect_state = EXECUTE;
-            cycles = execute(&cart, CPU, mem);
+            cycles = execute(&audio_data, &cart, CPU, mem);
             inspect_state = GENERAL;
             if(CPU->transfer){//tranfers take 640 dots in normal speed or 320 in double speed
                 data->transfer_timer += cycles;
@@ -411,22 +457,6 @@ int emulate(){
                 }
             }
         }
-
-        // if(CPU->transfer){//tranfers take 640 dots in normal speed or 320 in double speed
-        //     data->transfer_timer++;
-        //     if(data->transfer_timer == 640){//this means we get 640 iterations of the loop when this flag is active (values 0 to 639)
-        //         data->transfer = 0;
-        //         CPU->transfer = 0;
-        //     }
-        // }
-
-        // if(data->transfer){//tranfers take 640 dots in normal speed or 320 in double speed
-        //         data->transfer_timer += 4*cycles;
-        //         if(data->transfer_timer == 640){//this means we get 640 iterations of the loop when this flag is active (values 0 to 639)
-        //             data->transfer = 0;
-        //             CPU->transfer = 0;
-        //         }
-        //     }
 
         if(CPU->transfer_pending){
             //printf("transfer\n");
@@ -482,14 +512,42 @@ int emulate(){
                 ppu_countdown -= 4;
 
                 inspect_state = APU;
-                for(int j = 0; j<4; j++){
-                    apu(mem, &audio_data, CPU);
-                    if(++CPU->frame_timer == 64)    CPU->frame_timer = 0;
-                }
+                
 
             }
 
             //apu
+            {
+                clock_pulse(&audio_data, mem);
+                // clock_wave(&audio_data, mem);
+                // clock_wave(&audio_data, mem);
+                // if(audio_data.ch4_clock){
+                //     if(++ch4_counter >= audio_data.ch4_target){//putting == here silences channel 4 after it gets turned off. 
+                //         ch4_counter = 0;
+                //         lfsr_step(&audio_data, mem);
+                //     }
+                // }
+                audio_phase += 4*PICO_AUDIO_FREQ;
+                if(audio_phase >= MASTER_CLOCK){
+                    audio_phase -= MASTER_CLOCK;
+                    //if(sample_size == 64)     sample_size = 0;
+                    samples[sample_size++] = (get_sample_left(&audio_data, mem) << 16) | get_sample_right(&audio_data, mem);
+                    if(sample_size == 64)     sample_size = 0;
+                    dma_channel_configure(
+                        dma_audio_tx,
+                        &c_audio,
+                        &audio_format.pio->txf[audio_format.sm], // destination: PIO TX FIFO
+                        samples,                                 // source
+                        dma_encode_transfer_count(64),
+                        true                                     // start now
+                    );
+                    // samples[sample_size++] = get_sample_right(&audio_data, mem);
+                    // while (!pio_sm_is_tx_fifo_full(audio_format.pio, audio_format.sm)) {
+                    //     pio_sm_put(audio_format.pio, audio_format.sm, samples[sample_index++]);
+                    //     if(sample_index == 64)      sample_index = 0;
+                    // }
+                }
+            }
 
 
             // if(CPU->frame_timer >= 70223){//one frame has passed
@@ -508,20 +566,21 @@ int emulate(){
                 dma_finish = 0;
             }
             CPU->draw = 0;
-            joypad = ~(
-                DEV_Digital_Read(KEY_RIGHT) |
-                DEV_Digital_Read(KEY_LEFT) |
-                DEV_Digital_Read(KEY_UP) |
-                DEV_Digital_Read(KEY_DOWN) |
-                DEV_Digital_Read(KEY_A) |
-                DEV_Digital_Read(KEY_B) |
-                DEV_Digital_Read(KEY_X) |
-                DEV_Digital_Read(KEY_Y)
+            joypad = (
+                (DEV_Digital_Read(keyY)     << 7)   |
+                (DEV_Digital_Read(keyX)     << 6)   |
+                (DEV_Digital_Read(keyB)     << 5)   |
+                (DEV_Digital_Read(keyA)     << 4)   |
+                (DEV_Digital_Read(down)     << 3)   |
+                (DEV_Digital_Read(up)       << 2)   |
+                (DEV_Digital_Read(left)     << 1)   |
+                DEV_Digital_Read(right)
             );
 
             assign_joyp(mem, joypad);
             frames++;
             inspect_state = GENERAL;
+            
         }
 
         //For test rom validation

@@ -29,9 +29,9 @@
 #include "DEV_Config.h"
 
 uint bl_slice_num;
-uint dma_tx;
-dma_channel_config c;
-volatile bool dma_finish;
+uint dma_tx, dma_audio_tx;
+dma_channel_config c, c_audio;
+volatile bool dma_finish, dma_audio_finish;
 
 /**
  * delay x ms
@@ -196,6 +196,13 @@ uint8_t DEV_Module_Init(void)
     channel_config_set_transfer_data_size(&c, DMA_SIZE_8); 
     channel_config_set_dreq(&c, spi_get_dreq(LCD_SPI_PORT, true));
     dma_finish = true;
+
+    dma_audio_tx = dma_claim_unused_channel(true);
+    c_audio = dma_channel_get_default_config(dma_audio_tx);
+    channel_config_set_transfer_data_size(&c_audio, DMA_SIZE_32); 
+    channel_config_set_dreq(&c_audio, pio_get_dreq(audio_format.pio, audio_format.sm, true));
+    dma_audio_finish = true;
+
 
     printf("DEV_Module_Init OK \r\n");
     return 0;

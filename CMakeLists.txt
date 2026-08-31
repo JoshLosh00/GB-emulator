@@ -55,6 +55,7 @@ add_executable(pico-emulator
     lib/LCD/LCD_1in3.c
     lib/audio_pio/audio_pio.c
     lib/audio_data/audio_data.c
+    lib/infrared/infrared.c
 )
 
 pico_generate_pio_header(pico-emulator ${CMAKE_CURRENT_LIST_DIR}/audio_pio.pio)
@@ -72,6 +73,7 @@ target_include_directories(pico-emulator PRIVATE
     ${PROJECT_SOURCE_DIR}/lib/LCD
     ${PROJECT_SOURCE_DIR}/lib/audio_data
     ${PROJECT_SOURCE_DIR}/lib/audio_pio
+    ${PROJECT_SOURCE_DIR}/lib/infrared
 )
 
 target_link_libraries(pico-emulator

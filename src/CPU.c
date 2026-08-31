@@ -88,13 +88,13 @@ static inline void SetCSub8(uint8_t old, uint8_t value, cpu *CPU){
         CPU->F &= ~Cy;
     }
 }
-static inline void push16(struct cartridge *cart, cpu *CPU, memory *mem, uint16_t value){
+static inline void push16(apu_data *audio, struct cartridge *cart, cpu *CPU, memory *mem, uint16_t value){
     uint8_t hi = value >> 8;
     uint8_t lo = value;
     CPU->SP--;
-    mem_write(cart, CPU, mem, CPU->SP, hi);
+    mem_write(audio,  cart, CPU, mem, CPU->SP, hi);
     CPU->SP--;
-    mem_write(cart, CPU, mem, CPU->SP, lo);
+    mem_write(audio,  cart, CPU, mem, CPU->SP, lo);
     //printf("PUSH %04X at SP=%04X\n", value, CPU->SP);
 }
 static inline void SetCShiftL(cpu *CPU, uint8_t value){
@@ -182,12 +182,12 @@ void ld_imm16(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t offset){
     }
 }
 
-void ld_imm16_sp(struct cartridge *cart, cpu *CPU, memory *mem){
+void ld_imm16_sp(apu_data *audio, struct cartridge *cart, cpu *CPU, memory *mem){
     uint16_t addr = read16(cart,CPU,mem);
     uint8_t lo = (uint8_t) CPU->SP;
     uint8_t hi = (uint8_t) (CPU->SP >> 8);
-    mem_write(cart, CPU, mem, addr, lo);
-    mem_write(cart, CPU, mem, addr + 1, hi);
+    mem_write(audio,  cart, CPU, mem, addr, lo);
+    mem_write(audio,  cart, CPU, mem, addr + 1, hi);
 }
 
 void ld_a_r16mem(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t offset){
@@ -214,23 +214,23 @@ void ld_a_r16mem(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t offset){
     }
 }
 
-void ld_r16mem_a(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t offset){
+void ld_r16mem_a(apu_data *audio, struct cartridge *cart, cpu *CPU, memory *mem, uint8_t offset){
     uint16_t HL = getHL(CPU);
     switch(offset){
         case 0x00:
-            mem_write(cart, CPU, mem, getBC(CPU), CPU->A);
+            mem_write(audio,  cart, CPU, mem, getBC(CPU), CPU->A);
             break;
         case 0x10:
-            mem_write(cart, CPU, mem, getDE(CPU), CPU->A);
+            mem_write(audio,  cart, CPU, mem, getDE(CPU), CPU->A);
             break;
         case 0x20:
-            mem_write(cart, CPU, mem, HL, CPU->A);
+            mem_write(audio,  cart, CPU, mem, HL, CPU->A);
             HL++;
             CPU->L = (uint8_t) HL;//The casts are not strictly necessary but they clarify what's going on
             CPU->H = (uint8_t) (HL >> 8);
             break; 
         case 0x30:
-            mem_write(cart, CPU, mem, HL, CPU->A);
+            mem_write(audio,  cart, CPU, mem, HL, CPU->A);
             HL--;
             CPU->L = (uint8_t) HL;
             CPU->H = (uint8_t) (HL >> 8);
@@ -317,10 +317,10 @@ void add_HL_r16(cpu *CPU, memory *mem, uint8_t offset){
     SetHAdd16(old, value, CPU);
 }
 
-void inc_r8(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t offset){//come back (HL)
+void inc_r8(apu_data *audio, struct cartridge *cart, cpu *CPU, memory *mem, uint8_t offset){//come back (HL)
     if(offset == 0x30){
         uint8_t value = mem_read(cart, CPU, mem, getHL(CPU));
-        mem_write(cart, CPU, mem, getHL(CPU), value+1);
+        mem_write(audio,  cart, CPU, mem, getHL(CPU), value+1);
         SetZ8(value+1,CPU);
         SetHAdd8(value,1,CPU);
     } else{
@@ -334,10 +334,10 @@ void inc_r8(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t offset){//com
     CPU->F &= ~N;
 }
 
-void dec_r8(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t offset){//come back
+void dec_r8(apu_data *audio, struct cartridge *cart, cpu *CPU, memory *mem, uint8_t offset){//come back
     if(offset == 0x30){
         uint8_t value = mem_read(cart, CPU, mem, getHL(CPU));
-        mem_write(cart, CPU, mem, getHL(CPU), value-1);
+        mem_write(audio,  cart, CPU, mem, getHL(CPU), value-1);
         SetZ8(value-1,CPU);
         SetHSub8(value,1,CPU);
     } else{
@@ -352,10 +352,10 @@ void dec_r8(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t offset){//com
     CPU->F |= N;
 }
 
-void ld_rd_imm8(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t offset){
+void ld_rd_imm8(apu_data *audio, struct cartridge *cart, cpu *CPU, memory *mem, uint8_t offset){
     uint8_t value = readPC(cart,CPU,mem);
     if(offset == 0x30){
-        mem_write(cart, CPU, mem, getHL(CPU), value);
+        mem_write(audio,  cart, CPU, mem, getHL(CPU), value);
     }else{
         uint8_t *reg = get345reg(CPU, offset, mem);
         *reg = value;
@@ -515,7 +515,7 @@ void halt(cpu *CPU){
     CPU->halted = 1;
 }
 
-void ld_r8_r8(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t source, uint8_t dest){
+void ld_r8_r8(apu_data *audio, struct cartridge *cart, cpu *CPU, memory *mem, uint8_t source, uint8_t dest){
     uint8_t *d = get345reg(CPU, dest, mem);//come back
     uint8_t tmp;
     uint8_t *s;
@@ -526,7 +526,7 @@ void ld_r8_r8(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t source, uin
         s = get012reg(CPU, source, mem);
     }
     if (dest == 0x30){
-        mem_write(cart, CPU, mem, getHL(CPU), *s);
+        mem_write(audio,  cart, CPU, mem, getHL(CPU), *s);
     }else {
         *d = *s;//destination = source.
         //The pointer d and the value CPU->reg pointing to the same thing is what makes this work
@@ -794,46 +794,46 @@ void jp_hl(cpu *CPU){
     CPU->PC = getHL(CPU);
 }
 
-void call(struct cartridge *cart, cpu *CPU, memory *mem){
+void call(apu_data *audio, struct cartridge *cart, cpu *CPU, memory *mem){
     uint16_t oldpc = CPU->PC;
     uint16_t value = read16(cart,CPU,mem);
-    push16(cart, CPU, mem, CPU->PC);
+    push16(audio, cart, CPU, mem, CPU->PC);
     CPU->PC = value;
 }
 
-void call_nz(struct cartridge *cart, cpu *CPU, memory *mem){
+void call_nz(apu_data *audio, struct cartridge *cart, cpu *CPU, memory *mem){
     uint16_t value = read16(cart,CPU,mem);
     if((CPU->F & Z) == 0){
-        push16(cart, CPU, mem, CPU->PC);
+        push16(audio, cart, CPU, mem, CPU->PC);
         CPU->PC = value;
     }
 }
 
-void call_nc(struct cartridge *cart, cpu *CPU, memory *mem){
+void call_nc(apu_data *audio, struct cartridge *cart, cpu *CPU, memory *mem){
     uint16_t value = read16(cart,CPU,mem);
     if((CPU->F & Cy) == 0){
-        push16(cart, CPU, mem, CPU->PC);
+        push16(audio,  cart, CPU, mem, CPU->PC);
         CPU->PC = value;
     }
 }
 
-void call_z(struct cartridge *cart, cpu *CPU, memory *mem){
+void call_z(apu_data *audio, struct cartridge *cart, cpu *CPU, memory *mem){
     uint16_t value = read16(cart,CPU,mem);
     if(CPU->F & Z){
-        push16(cart, CPU, mem, CPU->PC);
+        push16(audio,  cart, CPU, mem, CPU->PC);
         CPU->PC = value; 
     }
 }
 
-void call_c(struct cartridge *cart, cpu *CPU, memory *mem){
+void call_c(apu_data *audio, struct cartridge *cart, cpu *CPU, memory *mem){
     uint16_t value = read16(cart,CPU,mem);
     if(CPU->F & Cy){
-        push16(cart, CPU, mem, CPU->PC);
+        push16(audio,  cart, CPU, mem, CPU->PC);
         CPU->PC = value;
     }
 }
-void rst(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t vec){
-    push16(cart, CPU, mem, CPU->PC);
+void rst(apu_data *audio, struct cartridge *cart, cpu *CPU, memory *mem, uint8_t vec){
+    push16(audio,  cart, CPU, mem, CPU->PC);
     CPU->PC = vec;
 }
 
@@ -861,32 +861,32 @@ void pop_r16stk(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t reg){
     CPU->SP += 2;
 }
 
-void push_r16stk(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t reg){
+void push_r16stk(apu_data *audio, struct cartridge *cart, cpu *CPU, memory *mem, uint8_t reg){
     switch(reg){
         case(0x00)://BC
-            push16(cart, CPU, mem, getBC(CPU));
+            push16(audio,  cart, CPU, mem, getBC(CPU));
             break;
         case(0x10)://DE
-            push16(cart, CPU, mem, getDE(CPU));
+            push16(audio,  cart, CPU, mem, getDE(CPU));
             break;
         case(0x20)://HL
-            push16(cart, CPU, mem, getHL(CPU));
+            push16(audio,  cart, CPU, mem, getHL(CPU));
             break;
         case(0x30)://AF
-            push16(cart, CPU, mem, ((CPU->A<<8)|CPU->F));
+            push16(audio,  cart, CPU, mem, ((CPU->A<<8)|CPU->F));
             break;
     }
         
 }
 
-void ldh_c_a(struct cartridge *cart, cpu *CPU, memory *mem){
-    mem_write(cart, CPU, mem, 0xFF00 + CPU->C, CPU->A);
+void ldh_c_a(apu_data *audio, struct cartridge *cart, cpu *CPU, memory *mem){
+    mem_write(audio, cart, CPU, mem, 0xFF00 + CPU->C, CPU->A);
 }
-void ldh_imm8_a(struct cartridge *cart, cpu *CPU, memory *mem){
-    mem_write(cart, CPU, mem, 0xFF00 + readPC(cart,CPU,mem), CPU->A);
+void ldh_imm8_a(apu_data *audio, struct cartridge *cart, cpu *CPU, memory *mem){
+    mem_write(audio, cart, CPU, mem, 0xFF00 + readPC(cart,CPU,mem), CPU->A);
 }
-void ld_imm16_a(struct cartridge *cart, cpu *CPU, memory *mem){
-    mem_write(cart, CPU, mem, read16(cart,CPU,mem), CPU->A);
+void ld_imm16_a(apu_data *audio, struct cartridge *cart, cpu *CPU, memory *mem){
+    mem_write(audio, cart, CPU, mem, read16(cart,CPU,mem), CPU->A);
 }
 void ldh_a_c(struct cartridge *cart, cpu *CPU, memory *mem){
     CPU->A = mem_read(cart, CPU, mem, 0xFF00 + CPU->C);
@@ -931,7 +931,7 @@ void di(cpu *CPU){
     CPU->IME = 0;
 }
 
-void rlc_r8(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t reg){
+void rlc_r8(apu_data *audio, struct cartridge *cart, cpu *CPU, memory *mem, uint8_t reg){
     uint8_t *value;
     uint8_t tmp;
     if (reg == 0x06){
@@ -948,11 +948,11 @@ void rlc_r8(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t reg){
     CPU->F &= ~N;
     CPU->F &= ~Hf;
     if(reg == 0x06){
-        mem_write(cart, CPU, mem, getHL(CPU), *value);
+        mem_write(audio, cart, CPU, mem, getHL(CPU), *value);
     }
 }
 
-void rrc_r8(struct cartridge *cart,cpu *CPU, memory *mem, uint8_t reg){
+void rrc_r8(apu_data *audio, struct cartridge *cart,cpu *CPU, memory *mem, uint8_t reg){
     uint8_t *value;
     uint8_t tmp;
     if (reg == 0x06){
@@ -966,13 +966,13 @@ void rrc_r8(struct cartridge *cart,cpu *CPU, memory *mem, uint8_t reg){
     *value >>= 1;
     *value |= bit1;
     if (reg == 0x06){
-        mem_write(cart, CPU, mem, getHL(CPU), *value);
+        mem_write(audio, cart, CPU, mem, getHL(CPU), *value);
     }
     SetZ8(*value,CPU);
     CPU->F &= ~N;
     CPU->F &= ~Hf;
 }
-void rl_r8(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t reg){
+void rl_r8(apu_data *audio, struct cartridge *cart, cpu *CPU, memory *mem, uint8_t reg){
     uint8_t *value;
     uint8_t tmp;
     if (reg == 0x06){
@@ -986,14 +986,14 @@ void rl_r8(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t reg){
     *value <<= 1;
     *value |= (tempC ? 0x01 : 0x00);
     if (reg == 0x06){
-        mem_write(cart, CPU, mem, getHL(CPU), *value);
+        mem_write(audio, cart, CPU, mem, getHL(CPU), *value);
     }
     SetZ8(*value,CPU);
     CPU->F &= ~N;
     CPU->F &= ~Hf;
 }
 
-void rr_r8(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t reg){
+void rr_r8(apu_data *audio, struct cartridge *cart, cpu *CPU, memory *mem, uint8_t reg){
     uint8_t *value;
     uint8_t tmp;
     if (reg == 0x06){
@@ -1007,14 +1007,14 @@ void rr_r8(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t reg){
     *value >>= 1;
     *value |= (tempC ? 0x80 : 0x00);
     if (reg == 0x06){
-        mem_write(cart, CPU, mem, getHL(CPU), *value);
+        mem_write(audio,  cart, CPU, mem, getHL(CPU), *value);
     }
     SetZ8(*value,CPU);
     CPU->F &= ~N;
     CPU->F &= ~Hf;
 }
 
-void sla_r8(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t reg){
+void sla_r8(apu_data *audio, struct cartridge *cart, cpu *CPU, memory *mem, uint8_t reg){
     uint8_t *value;
     uint8_t tmp;
     if (reg == 0x06){
@@ -1026,13 +1026,13 @@ void sla_r8(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t reg){
     SetCShiftL(CPU, *value);
     *value <<= 1;
     if (reg == 0x06){
-        mem_write(cart, CPU, mem, getHL(CPU), *value);
+        mem_write(audio,  cart, CPU, mem, getHL(CPU), *value);
     }
     SetZ8(*value,CPU);
     CPU->F &= ~N;
     CPU->F &= ~Hf;
 }
-void sra_r8(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t reg){
+void sra_r8(apu_data *audio, struct cartridge *cart, cpu *CPU, memory *mem, uint8_t reg){
     uint8_t *value;
     uint8_t tmp;
     if (reg == 0x06){
@@ -1046,14 +1046,14 @@ void sra_r8(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t reg){
     *value >>= 1;
     *value |= bit7;
     if (reg == 0x06){
-        mem_write(cart, CPU, mem, getHL(CPU), *value);
+        mem_write(audio,  cart, CPU, mem, getHL(CPU), *value);
     }
     SetZ8(*value,CPU);
     CPU->F &= ~N;
     CPU->F &= ~Hf;
 }
 
-void srl_r8(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t reg){
+void srl_r8(apu_data *audio, struct cartridge *cart, cpu *CPU, memory *mem, uint8_t reg){
     uint8_t *value;
     uint8_t tmp;
     if (reg == 0x06){
@@ -1066,14 +1066,14 @@ void srl_r8(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t reg){
     *value >>= 1;
     *value &= 0x7F;//probably don't need this
     if (reg == 0x06){
-        mem_write(cart, CPU, mem, getHL(CPU), *value);
+        mem_write(audio,  cart, CPU, mem, getHL(CPU), *value);
     }
     SetZ8(*value,CPU);
     CPU->F &= ~N;
     CPU->F &= ~Hf;
 }
 
-void swap_r8(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t reg){
+void swap_r8(apu_data *audio, struct cartridge *cart, cpu *CPU, memory *mem, uint8_t reg){
     uint8_t *value;
     uint8_t tmp;
     if (reg == 0x06){
@@ -1086,7 +1086,7 @@ void swap_r8(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t reg){
     uint8_t lo = (*value) & 0x0F;
     *value = (lo<<4) | (hi>>4);
     if (reg == 0x06){
-        mem_write(cart, CPU, mem, getHL(CPU), *value);
+        mem_write(audio,  cart, CPU, mem, getHL(CPU), *value);
     }
     if(*value){//setting all flags at once
         CPU->F = 0;
@@ -1132,7 +1132,7 @@ void bit_b3_r8(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t test, uint
     CPU->F |= Hf;
 }
 
-void res_b3_r8(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t bit, uint8_t reg){
+void res_b3_r8(apu_data *audio, struct cartridge *cart, cpu *CPU, memory *mem, uint8_t bit, uint8_t reg){
     uint8_t *value;
     uint8_t tmp;
     if (reg == 0x06){
@@ -1144,10 +1144,10 @@ void res_b3_r8(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t bit, uint8
     uint8_t test = bitswitch(bit);
     *value &= ~test;
     if (reg == 0x06){
-        mem_write(cart, CPU, mem, getHL(CPU), *value);
+        mem_write(audio,  cart, CPU, mem, getHL(CPU), *value);
     }
 }
-void set_b3_r8(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t bit, uint8_t reg){
+void set_b3_r8(apu_data *audio, struct cartridge *cart, cpu *CPU, memory *mem, uint8_t bit, uint8_t reg){
     uint8_t *value;
     uint8_t tmp;
     if (reg == 0x06){
@@ -1159,11 +1159,11 @@ void set_b3_r8(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t bit, uint8
     uint8_t test = bitswitch(bit);
     *value |= test;
     if (reg == 0x06){
-        mem_write(cart, CPU, mem, getHL(CPU), *value);
+        mem_write(audio,  cart, CPU, mem, getHL(CPU), *value);
     }
 }
 
-int CBprefix(struct cartridge *cart, cpu *CPU, memory *mem){
+int CBprefix(apu_data *audio, struct cartridge *cart, cpu *CPU, memory *mem){
     uint8_t opcode = readPC(cart,CPU,mem);
     uint8_t reg = opcode & 0x07;
     uint8_t bit = opcode & 0x38;
@@ -1171,28 +1171,28 @@ int CBprefix(struct cartridge *cart, cpu *CPU, memory *mem){
         case(0x00):
             switch(bit){
                 case(0x00):
-                    rlc_r8(cart, CPU, mem, reg);
+                    rlc_r8(audio, cart, CPU, mem, reg);
                     break;
                 case(0x08):
-                    rrc_r8(cart, CPU, mem, reg);
+                    rrc_r8(audio, cart, CPU, mem, reg);
                     break;
                 case(0x10):
-                    rl_r8(cart, CPU, mem, reg);
+                    rl_r8(audio, cart, CPU, mem, reg);
                     break;
                 case(0x18):
-                    rr_r8(cart, CPU, mem, reg);
+                    rr_r8(audio, cart, CPU, mem, reg);
                     break;
                 case(0x20):
-                    sla_r8(cart, CPU, mem, reg);
+                    sla_r8(audio, cart, CPU, mem, reg);
                     break;
                 case(0x28):
-                    sra_r8(cart, CPU, mem, reg);
+                    sra_r8(audio, cart, CPU, mem, reg);
                     break;
                 case(0x30):
-                    swap_r8(cart, CPU, mem, reg);
+                    swap_r8(audio, cart, CPU, mem, reg);
                     break;
                 case(0x38):    
-                    srl_r8(cart, CPU, mem, reg);
+                    srl_r8(audio, cart, CPU, mem, reg);
                     break;
             }
             break;
@@ -1200,10 +1200,10 @@ int CBprefix(struct cartridge *cart, cpu *CPU, memory *mem){
             bit_b3_r8(cart, CPU, mem, bit, reg);
             break;
         case(0x80):
-            res_b3_r8(cart, CPU, mem, bit, reg);
+            res_b3_r8(audio, cart, CPU, mem, bit, reg);
             break;
         case(0xC0):
-            set_b3_r8(cart, CPU, mem, bit, reg);
+            set_b3_r8(audio, cart, CPU, mem, bit, reg);
             break;
     }
     if(reg == 0x06){
@@ -1248,7 +1248,7 @@ void arith_8bit(struct cartridge *cart, cpu *CPU, memory *mem, uint8_t operation
     }
 }
 
-uint32_t execute(struct cartridge *cart, cpu *CPU, memory *mem){
+uint32_t execute(apu_data *audio, struct cartridge *cart, cpu *CPU, memory *mem){
 
     if(CPU->halted){
         return 1;//This means the CPU can only start again on t-cycles that are multiples of 4
@@ -1296,7 +1296,7 @@ uint32_t execute(struct cartridge *cart, cpu *CPU, memory *mem){
                         ld_imm16(cart, CPU, mem, offset);
                         return 3;
                     case 0x02:
-                        ld_r16mem_a(cart, CPU, mem, offset);
+                        ld_r16mem_a(audio, cart, CPU, mem, offset);
                         return 2;
                     case 0x0A:
                         ld_a_r16mem(cart, CPU, mem, offset);
@@ -1304,7 +1304,7 @@ uint32_t execute(struct cartridge *cart, cpu *CPU, memory *mem){
                     case 0x08:
                         switch(opcode & m45block_mask){
                             case 0x00:
-                                ld_imm16_sp(cart, CPU, mem);
+                                ld_imm16_sp(audio, cart, CPU, mem);
                                 return 5;
                             case 0x10:
                                 jr_imm8(cart, CPU, mem);
@@ -1336,7 +1336,7 @@ uint32_t execute(struct cartridge *cart, cpu *CPU, memory *mem){
                         return 2;
                     case 0x04:
                     case 0x0C:
-                        inc_r8(cart, CPU, mem, bits345);
+                        inc_r8(audio, cart, CPU, mem, bits345);
                         if(opcode == 0x34){
                             return 3;
                         } else{
@@ -1344,7 +1344,7 @@ uint32_t execute(struct cartridge *cart, cpu *CPU, memory *mem){
                         }
                     case 0x05:
                     case 0x0D:
-                        dec_r8(cart, CPU, mem, bits345);
+                        dec_r8(audio, cart, CPU, mem, bits345);
                         if(opcode == 0x35){
                             return 3;
                         } else{
@@ -1352,7 +1352,7 @@ uint32_t execute(struct cartridge *cart, cpu *CPU, memory *mem){
                         }
                     case 0x06:
                     case 0x0E:
-                        ld_rd_imm8(cart, CPU, mem, bits345);
+                        ld_rd_imm8(audio, cart, CPU, mem, bits345);
                         if(opcode == 0x36){
                             return 3;
                         } else{
@@ -1399,7 +1399,7 @@ uint32_t execute(struct cartridge *cart, cpu *CPU, memory *mem){
                     halt(CPU);
                     return 1;
                 } else {
-                    ld_r8_r8(cart, CPU, mem, source, dest);
+                    ld_r8_r8(audio, cart, CPU, mem, source, dest);
                     if(source == 0x06 || dest == 0x30){
                         return 2;
                     } else {
@@ -1426,12 +1426,12 @@ uint32_t execute(struct cartridge *cart, cpu *CPU, memory *mem){
                         pop_r16stk(cart, CPU, mem, reg);
                         return 3;
                     case(0x05):
-                        push_r16stk(cart, CPU, mem, reg);
+                        push_r16stk(audio, cart, CPU, mem, reg);
                         return 4;
                     default:
                         if((opcode & 0x07) == 0x07){
                             uint8_t tgt = opcode & m543mask;
-                            rst(cart, CPU, mem, tgt);
+                            rst(audio, cart, CPU, mem, tgt);
                             return 4;
                         } else{
                             switch(opcode & 0x3F){
@@ -1528,46 +1528,46 @@ uint32_t execute(struct cartridge *cart, cpu *CPU, memory *mem){
                                     jp_hl(CPU);
                                     return 1;
                                 case(0x04):
-                                    call_nz(cart, CPU, mem);
+                                    call_nz(audio, cart, CPU, mem);
                                     if(((CPU->F) & Z) == 0){
                                         return 6;
                                     } else {
                                         return 3;
                                     }
                                 case(0x14):
-                                    call_nc(cart, CPU, mem);
+                                    call_nc(audio, cart, CPU, mem);
                                     if(((CPU->F) & Cy) == 0){
                                         return 6;
                                     } else {
                                         return 3;
                                     }
                                 case(0x0C):
-                                    call_z(cart, CPU, mem);
+                                    call_z(audio, cart, CPU, mem);
                                     if((CPU->F) & Z){
                                         return 6;
                                     } else {
                                         return 3;
                                     }
                                 case(0x1C):
-                                    call_c(cart, CPU, mem);
+                                    call_c(audio, cart, CPU, mem);
                                     if((CPU->F) & Cy){
                                         return 6;
                                     } else {
                                         return 3;
                                     }
                                 case(0x0D):
-                                    call(cart, CPU, mem);
+                                    call(audio,cart, CPU, mem);
                                     return 6;
                                 case(0x0B):
-                                    return CBprefix(cart, CPU, mem);
+                                    return CBprefix(audio, cart, CPU, mem);
                                 case(0x22):
-                                    ldh_c_a(cart, CPU, mem);
+                                    ldh_c_a(audio, cart, CPU, mem);
                                     return 2;
                                 case(0x20):
-                                    ldh_imm8_a(cart, CPU, mem);
+                                    ldh_imm8_a(audio, cart, CPU, mem);
                                     return 3;
                                 case(0x2A):
-                                    ld_imm16_a(cart, CPU, mem);
+                                    ld_imm16_a(audio, cart, CPU, mem);
                                     return 4;
                                 case(0x32):
                                     ldh_a_c(cart, CPU, mem);
@@ -1601,10 +1601,10 @@ uint32_t execute(struct cartridge *cart, cpu *CPU, memory *mem){
     }
 }
 
-uint32_t interrupt_service(struct cartridge *cart, cpu *CPU, memory *mem, int bit){
+uint32_t interrupt_service(apu_data *audio,struct cartridge *cart, cpu *CPU, memory *mem, int bit){
     CPU->IME = 0;
     IF(mem) &= ~(1<<bit); 
-    push16(cart, CPU, mem, CPU->PC);
+    push16(audio, cart, CPU, mem, CPU->PC);
     switch(bit){
         case 0:
             CPU->PC = 0x40;//Vblank 

@@ -145,7 +145,7 @@ static void LCD_1IN3_InitReg(void)
     LCD_1IN3_SendData_8Bit(0x20);
     LCD_1IN3_SendData_8Bit(0x23);
 
-    //LCD_1IN3_SendCommand(0x21);  //Display Inversion On
+    LCD_1IN3_SendCommand(0x21);  //Display Inversion On
 
     LCD_1IN3_SendCommand(0x11);  //Sleep Out
 

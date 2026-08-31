@@ -4,9 +4,13 @@
 #include "DEV_Config.h"
 #include "audio_data.h"
 #include "audio_pio.h"
+#include "infrared.h"
 // #include "01-special.h"
 // #include "dmg.h"
 //#include <SDL2/SDL.h>
+
+//in DMG, double speed mode in CGB is twice this
+#define MASTER_CLOCK 4194304
 
 #define Z 0x80
 #define N 0x40
@@ -245,6 +249,9 @@ typedef struct{
     //channel status. This is also reported by NR52 but
     //"writing to those does not enable or disable the channels, despite many emulators behaving as if it does." 
     bool channel_status[4];
+
+    int ch4_target;
+    bool ch4_clock;
 } apu_data;
 
 typedef struct {//As of now this contains redundant fields.They're needed for the FIFO
@@ -338,15 +345,15 @@ typedef struct {
 //the returned value is how long the performed actions takes
 int ppu(struct cartridge *cart, cpu *CPU, memory *mem, ppu_data *data);
 
-uint32_t execute(struct cartridge *cart, cpu *CPU, memory *mem);
+uint32_t execute(apu_data *data, struct cartridge *cart, cpu *CPU, memory *mem);
 
-uint32_t interrupt_service(struct cartridge *cart, cpu *CPU, memory *mem, int bit);
+uint32_t interrupt_service(apu_data *data, struct cartridge *cart, cpu *CPU, memory *mem, int bit);
 
 //void debugger(struct debug_state *debug, struct cartridge *cart, cpu *CPU, memory *mem);
 
 //void init_table(void);
 
-void mem_write(struct cartridge *cart, cpu *CPU, memory *mem, uint16_t addr, uint8_t value);
+void mem_write(apu_data *data, struct cartridge *cart, cpu *CPU, memory *mem, uint16_t addr, uint8_t value);
 
 uint8_t mem_read(struct cartridge *cart, cpu *CPU, memory *mem, uint16_t addr);
 
@@ -362,10 +369,20 @@ void OAM_DMA_Transfer(struct cartridge *cart, memory *mem);
 
 extern op_info operations[512];
 
-void apu(memory *mem, apu_data *data, cpu *CPU/*I only need the frame timer, should probably take this out of the CPU struct*/);
+//void apu(memory *mem, apu_data *data, cpu *CPU/*I only need the frame timer, should probably take this out of the CPU struct*/);
 
-uint16_t get_sample_left(apu_data *data, memory *mem);
-uint16_t get_sample_right(apu_data *data, memory *mem);
+int16_t get_sample_left(apu_data *data, memory *mem);
+int16_t get_sample_right(apu_data *data, memory *mem);
+
+void trigger_pulse(apu_data *data, memory *mem, int channel);
+void trigger_wave(apu_data *data, memory *mem);
+void trigger_noise(apu_data *data, memory *mem);
+
+void clock_pulse(apu_data *data, memory *mem/*, uint16_t period_1, uint16_t period_2*/ );
+void clock_wave(apu_data *data, memory *mem);
+void lfsr_step(apu_data *data, memory *mem);
+
+void apu_div_actions(apu_data *data, cpu *CPU, memory *mem);
 
 //extern volatile uint32_t statistics[5];
 
@@ -379,7 +396,8 @@ enum inspection_state {
     DRAW,
     DMA,
     DOT_LOOP,
-    APU
+    APU,
+    JOYPAD
 }; 
 
 extern volatile enum inspection_state inspect_state;

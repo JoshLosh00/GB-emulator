@@ -31,6 +31,9 @@
 
 #include "stdio.h"
 #include <stdbool.h>
+#include "audio_pio.pio.h"
+#include "audio_pio.h"
+#include "hardware/pio.h"
 #include "pico/stdlib.h"
 #include "hardware/adc.h"
 #include "hardware/spi.h"
@@ -90,9 +93,9 @@
 
 /*------------------------------------------------------------------------------------------------------*/
 
-extern uint dma_tx;
-extern dma_channel_config c;
-extern volatile bool dma_finish;
+extern uint dma_tx, dma_audio_tx;
+extern dma_channel_config c, c_audio;
+extern volatile bool dma_finish, dma_audio_finish;
 
 void DEV_Delay_ms(uint32_t xms);
 void DEV_Delay_us(uint32_t xus);

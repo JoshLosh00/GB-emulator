@@ -23,7 +23,7 @@ void APU_init(apu_data *data, memory *mem){
     data->pulse_pos[1] = 0;
 }
 
-uint8_t lfsr_step(apu_data *data, memory *mem){
+void lfsr_step(apu_data *data, memory *mem){
     //When CH4 is ticked (at the frequency specified via NR43):
     //The result of LFSR_0 ⊙ LFSR_1 (1 if bit 0 and bit 1 are identical, 0 otherwise) is written to bit 15.
     //If “short mode” was selected in NR43, then bit 15 is copied to bit 7 as well.
@@ -37,7 +37,8 @@ uint8_t lfsr_step(apu_data *data, memory *mem){
 
     data->lfsr >>= 1;
     //Logical vs arithmetic shifts do not matter here. Bit 15 is rewitten on the next time anyway so what it ends up being here makes no difference  
-    return data->lfsr & 1;
+    uint8_t value = data->lfsr & 1;
+    data->ch4_amp = value * data->vols[3];
 }
 
 void trigger_pulse(apu_data *data, memory *mem, int channel){
@@ -135,15 +136,15 @@ void trigger_noise(apu_data *data, memory *mem){
 }
 
 //I dislike having the two period parameters. Look at how to change this
-void clock_pulse(apu_data *data, memory *mem, uint16_t period_1, uint16_t period_2 ){
+void clock_pulse(apu_data *data, memory *mem/*, uint16_t period_1, uint16_t period_2 */){
     for(int i = 0; i<2; i++){
-        uint16_t period;
+        uint16_t period =( ((NRX4(mem, i)) << 8) | NRX3(mem, i)) & 0x7FF;
         uint8_t test = (NRX1(mem, i) >> 6) & 0x03;
-        if(i == 0){
-            period = period_1;
-        } else{
-            period = period_2;
-        }
+        // if(i == 0){
+        //     period = NR;
+        // } else{
+        //     period = period_2;
+        // }
         if(data->pulse_divs[i] == 0x7FF){
             data->pulse_divs[i] = period; 
             bool is_high = waveform[test][data->pulse_pos[i]];
@@ -181,6 +182,88 @@ void clock_wave(apu_data *data, memory *mem){
         data->ch3_div++;
     }
 }
+
+
+void apu_div_actions(apu_data *data, cpu *CPU, memory *mem){
+    if(!(data->DIV_APU & 1)){
+        /*If the functionality is enabled, a channel’s length timer ticks up at 256 Hz (tied to DIV-APU) from the value it’s initially set at.
+        When the length timer reaches 64 (CH1, CH2, and CH4) or 256 (CH3), the channel is turned off.
+        
+        Internally, the length timer is inverted when written, and that ticks down until it reaches 0. But the effect is as if the counter ticked up.*/
+        for (int i = 0; i<4; i++){
+            uint16_t max = (i == 2) ? 256 : 64;
+            if((CPU->length_enable[i]) && (data->timers[i] < max)){
+                (data->timers[i])++;
+                if (data->timers[i] == max){
+                    data->dacs[i] = 0;
+                    CPU->length_enable[i] = false;
+                }
+            }
+        }
+    }
+
+    //Ch1 sweep occurs in units of 128Hz
+    // Channel 1 sweep functionality
+    if((data->DIV_APU % 4) == 0){
+
+    /*
+    This code seems unnecessary. Its purpose is to initialise the sweep functionality but 
+    this already happens upon triggering the channel
+
+    if(data->sweep_check){//
+        data->sweep_pace = 0x07 & (NR10(mem) >> 4);
+        data->sweep_check = 0;
+        data->sweep_pos = 0;
+    } else{*/
+        uint16_t ch1_period =( (NR14(mem) << 8) | NR13(mem)) & 0x7FF;
+        if(data->sweep_pace != 0){
+            data->sweep_pos++;
+            if(data->sweep_pos >= data->sweep_pace){
+                uint16_t change = ch1_period/(1<< (NR10(mem) & 0x07));
+                ch1_period = NR10(mem) & 0x08 ? ch1_period + change : ch1_period - change;
+                if (ch1_period > 0x7FF)
+                    data->dacs[0] = 0;
+                NR13(mem) = ch1_period;
+                NR14(mem) &= 0xF8;
+                NR14(mem) |= (ch1_period >> 8) & 0x07;
+            }
+        } else{
+            //while a pace of 0 disables the sweep functionality, it still checks for an overflow
+            if(((2 * ch1_period) > 0x7FF) && (NR10(mem) & 0x08)){
+                data->dacs[0] = 0;
+            }
+        }
+
+    }
+
+    if((data->DIV_APU % 8) == 0){//64Hz
+        // Envelope sweep volume function
+        // Ch3 does not have this functionality 
+        for (int i = 0; i < 3; i++){
+            //getting the correct index for the channels' envelope function
+            int j = (i == 2) ? 3 : i;
+            
+            //If NRX2 has bits 0-2, the sweep pace, all set to 0, the envelope functionality is disabled
+            if(NRX2(mem, j) & 0x07){
+                //The volume is adjusted every "sweep pace" calls to this if statement
+                data->env_timers[i]++;
+                if(data->env_timers[i] == (NRX2(mem, j) & 0x7)){
+                    data->env_timers[i] = 0;
+                    if((NRX2(mem,j) & 0x8) && (data->vols[j] < 4)){
+                        data->vols[j]++;
+                    }
+                    else if(!(NRX2(mem,j) & 0x8) && (data->vols[j] > 0)){
+                        data->vols[j]--;
+                    }
+                    
+                }
+            }
+
+        }
+    }
+}
+
+
 
 
 /*
@@ -227,183 +310,184 @@ The opposite is not true. Disabling a DAC also disables the corresponding channe
 *The 5x registers, master control
 
 */
-void apu(memory *mem, apu_data *data, cpu *CPU/*I only need the frame timer, should probably take this out of the CPU struct*/){
+// void apu(memory *mem, apu_data *data, cpu *CPU/*I only need the frame timer, should probably take this out of the CPU struct*/){
 
-    // if(NR52(mem) & (1<<7)){
-        uint16_t ch1_period = 0x07FF & ((NR14(mem) << 8) | NR13(mem));
-        uint16_t ch2_period = 0x07FF & ((NR24(mem) << 8) | NR23(mem));
-        uint16_t ch3_period = 0x07FF & ((NR34(mem) << 8) | NR33(mem));
-        uint16_t ch4_period = 0x07FF & ((NR44(mem) << 8) | NR43(mem));
+//     // if(NR52(mem) & (1<<7)){
+//         uint16_t ch1_period = 0x07FF & ((NR14(mem) << 8) | NR13(mem));
+//         uint16_t ch2_period = 0x07FF & ((NR24(mem) << 8) | NR23(mem));
+//         // uint16_t ch3_period = 0x07FF & ((NR34(mem) << 8) | NR33(mem));
+//         // uint16_t ch4_period = 0x07FF & ((NR44(mem) << 8) | NR43(mem));
 
         
 
-        for(int i = 0; i<4; i++){
-            if(CPU->audio_triggers[i]){
-                CPU->audio_triggers[i] = 0;
-                if(data->dacs[i]){
-                    switch (i){
-                        case 2:
-                            trigger_wave(data,mem);
-                            break;
-                        case 3:
-                            trigger_noise(data,mem);
-                            break;
-                        default:
-                            trigger_pulse(data, mem, i);
-                    }
-                    CPU->audio_triggers[i] = 0;
-                }
-            }
-        }
+//         // for(int i = 0; i<4; i++){
+//         //     if(CPU->audio_triggers[i]){
+//         //         CPU->audio_triggers[i] = 0;
+//         //         if(data->dacs[i]){
+//         //             switch (i){
+//         //                 case 2:
+//         //                     trigger_wave(data,mem);
+//         //                     break;
+//         //                 case 3:
+//         //                     trigger_noise(data,mem);
+//         //                     break;
+//         //                 default:
+//         //                     trigger_pulse(data, mem, i);
+//         //             }
+//         //             CPU->audio_triggers[i] = 0;
+//         //         }
+//         //     }
+//         // }
 
-        //DAC control
-        //PanDocs: Channel x’s DAC is enabled if and only if [NRx2] & $F8 != 0; 
-        //the exception is CH3, whose DAC is directly controlled by bit 7 of NR30 instead. 
-        for(int i = 0; i < 3; i++){
-            int j = (i == 2) ? 3 : i;
-            if((NRX2(mem, j) & 0xF8) == 0){
-                data->dacs[j] = 0;
-                data->channel_status[j] = 0;
-            } else{
-                data->dacs[j] = 1;
-            }
-        }
+//         //DAC control
+//         //PanDocs: Channel x’s DAC is enabled if and only if [NRx2] & $F8 != 0; 
+//         //the exception is CH3, whose DAC is directly controlled by bit 7 of NR30 instead. 
+//         // for(int i = 0; i < 3; i++){
+//         //     int j = (i == 2) ? 3 : i;
+//         //     if((NRX2(mem, j) & 0xF8) == 0){
+//         //         data->dacs[j] = 0;
+//         //         data->channel_status[j] = 0;
+//         //     } else{
+//         //         data->dacs[j] = 1;
+//         //     }
+//         // }
 
-        if((NR30(mem) & 0x70) == 0){
-            data->dacs[2] = 0;
-            data->channel_status[2] = 0;
-        } else {
-            data->dacs[2] = 1;
-        }
+//         // if((NR30(mem) & 0x70) == 0){
+//         //     data->dacs[2] = 0;
+//         //     data->channel_status[2] = 0;
+//         // } else {
+//         //     data->dacs[2] = 1;
+//         // }
 
-        for(int i = 0; i<4; i++){
-            uint8_t mask = (1<<i);
-            NR52(mem) &= ~mask;
-            if(data->channel_status[i]){
-                NR52(mem) |= mask;
-            }
-        }
+//         // for(int i = 0; i<4; i++){
+//         //     uint8_t mask = (1<<i);
+//         //     NR52(mem) &= ~mask;
+//         //     if(data->channel_status[i]){
+//         //         NR52(mem) |= mask;
+//         //     }
+//         // }
 
-        //The DIV_APU is incremented at a rate of 512HZ
-        //At the moment, this is not the case since the system is only stalled to align with each frame ~60Hz. This may cause issues but should be fine
+//         //The DIV_APU is incremented at a rate of 512HZ
+//         //At the moment, this is not the case since the system is only stalled to align with each frame ~60Hz. This may cause issues but should be fine
 
-        //The rate at which the following actions occur is dependant on DIV_APU
-        if(data->DIV_APU != data->prev_DIV){//DIV increased. It can only increase by 1
-            data->prev_DIV = data->DIV_APU;
-            if(!(data->DIV_APU & 1)){
-                /*If the functionality is enabled, a channel’s length timer ticks up at 256 Hz (tied to DIV-APU) from the value it’s initially set at.
-                When the length timer reaches 64 (CH1, CH2, and CH4) or 256 (CH3), the channel is turned off.
+//         //The rate at which the following actions occur is dependant on DIV_APU
+//         if(data->DIV_APU != data->prev_DIV){//DIV increased. It can only increase by 1
+//             data->prev_DIV = data->DIV_APU;
+//             if(!(data->DIV_APU & 1)){
+//                 /*If the functionality is enabled, a channel’s length timer ticks up at 256 Hz (tied to DIV-APU) from the value it’s initially set at.
+//                 When the length timer reaches 64 (CH1, CH2, and CH4) or 256 (CH3), the channel is turned off.
                 
-                Internally, the length timer is inverted when written, and that ticks down until it reaches 0. But the effect is as if the counter ticked up.*/
-                for (int i = 0; i<4; i++){
-                    uint16_t max = (i == 2) ? 256 : 64;
-                    if((CPU->length_enable[i]) && (data->timers[i] < max)){
-                        (data->timers[i])++;
-                        if (data->timers[i] == max){
-                            data->dacs[i] = 0;
-                            CPU->length_enable[i] = false;
-                        }
-                    }
-                }
-            }
+//                 Internally, the length timer is inverted when written, and that ticks down until it reaches 0. But the effect is as if the counter ticked up.*/
+//                 for (int i = 0; i<4; i++){
+//                     uint16_t max = (i == 2) ? 256 : 64;
+//                     if((CPU->length_enable[i]) && (data->timers[i] < max)){
+//                         (data->timers[i])++;
+//                         if (data->timers[i] == max){
+//                             data->dacs[i] = 0;
+//                             CPU->length_enable[i] = false;
+//                         }
+//                     }
+//                 }
+//             }
 
-            //Ch1 sweep occurs in units of 128Hz
-            // Channel 1 sweep functionality
-            if((data->DIV_APU % 4) == 0){
+//             //Ch1 sweep occurs in units of 128Hz
+//             // Channel 1 sweep functionality
+//             if((data->DIV_APU % 4) == 0){
 
-            /*
-            This code seems unnecessary. Its purpose is to initialise the sweep functionality but 
-            this already happens upon triggering the channel
+//             /*
+//             This code seems unnecessary. Its purpose is to initialise the sweep functionality but 
+//             this already happens upon triggering the channel
 
-            if(data->sweep_check){//
-                data->sweep_pace = 0x07 & (NR10(mem) >> 4);
-                data->sweep_check = 0;
-                data->sweep_pos = 0;
-            } else{*/
-                if(data->sweep_pace != 0){
-                    data->sweep_pos++;
-                    if(data->sweep_pos >= data->sweep_pace){
-                        uint16_t change = ch1_period/(1<< (NR10(mem) & 0x07));
-                        ch1_period = NR10(mem) & 0x08 ? ch1_period + change : ch1_period - change;
-                        if (ch1_period > 0x7FF)
-                            data->dacs[0] = 0;
-                        NR13(mem) = ch1_period;
-                        NR14(mem) &= 0xF8;
-                        NR14(mem) |= (ch1_period >> 8) & 0x07;
-                    }
-                } else{
-                    //while a pace of 0 disables the sweep functionality, it still checks for an overflow
-                    if(((2 * ch1_period) > 0x7FF) && (NR10(mem) & 0x08)){
-                        data->dacs[0] = 0;
-                    }
-                }
+//             if(data->sweep_check){//
+//                 data->sweep_pace = 0x07 & (NR10(mem) >> 4);
+//                 data->sweep_check = 0;
+//                 data->sweep_pos = 0;
+//             } else{*/
+//                 if(data->sweep_pace != 0){
+//                     data->sweep_pos++;
+//                     if(data->sweep_pos >= data->sweep_pace){
+//                         uint16_t change = ch1_period/(1<< (NR10(mem) & 0x07));
+//                         ch1_period = NR10(mem) & 0x08 ? ch1_period + change : ch1_period - change;
+//                         if (ch1_period > 0x7FF)
+//                             data->dacs[0] = 0;
+//                         NR13(mem) = ch1_period;
+//                         NR14(mem) &= 0xF8;
+//                         NR14(mem) |= (ch1_period >> 8) & 0x07;
+//                     }
+//                 } else{
+//                     //while a pace of 0 disables the sweep functionality, it still checks for an overflow
+//                     if(((2 * ch1_period) > 0x7FF) && (NR10(mem) & 0x08)){
+//                         data->dacs[0] = 0;
+//                     }
+//                 }
 
-            }
+//             }
 
-            if((data->DIV_APU % 8) == 0){//64Hz
-                // Envelope sweep volume function
-                // Ch3 does not have this functionality 
-                for (int i = 0; i < 3; i++){
-                    //getting the correct index for the channels' envelope function
-                    int j = (i == 2) ? 3 : i;
+//             if((data->DIV_APU % 8) == 0){//64Hz
+//                 // Envelope sweep volume function
+//                 // Ch3 does not have this functionality 
+//                 for (int i = 0; i < 3; i++){
+//                     //getting the correct index for the channels' envelope function
+//                     int j = (i == 2) ? 3 : i;
                     
-                    //If NRX2 has bits 0-2, the sweep pace, all set to 0, the envelope functionality is disabled
-                    if(NRX2(mem, j) & 0x07){
-                        //The volume is adjusted every "sweep pace" calls to this if statement
-                        data->env_timers[i]++;
-                        if(data->env_timers[i] == (NRX2(mem, j) & 0x7)){
-                            data->env_timers[i] = 0;
-                            if((NRX2(mem,j) & 0x8) && (data->vols[j] < 4)){
-                                data->vols[j]++;
-                            }
-                            else if(!(NRX2(mem,j) & 0x8) && (data->vols[j] > 0)){
-                                data->vols[j]--;
-                            }
+//                     //If NRX2 has bits 0-2, the sweep pace, all set to 0, the envelope functionality is disabled
+//                     if(NRX2(mem, j) & 0x07){
+//                         //The volume is adjusted every "sweep pace" calls to this if statement
+//                         data->env_timers[i]++;
+//                         if(data->env_timers[i] == (NRX2(mem, j) & 0x7)){
+//                             data->env_timers[i] = 0;
+//                             if((NRX2(mem,j) & 0x8) && (data->vols[j] < 4)){
+//                                 data->vols[j]++;
+//                             }
+//                             else if(!(NRX2(mem,j) & 0x8) && (data->vols[j] > 0)){
+//                                 data->vols[j]--;
+//                             }
                             
-                        }
-                    }
+//                         }
+//                     }
 
-                }
-            }
+//                 }
+//             }
 
-        }
+//         }
 
-        //Pandocs: The pulse channels’ period dividers are clocked at 1048576 Hz, once per four dots
-        //CPU->frame_timer is incrememtned every dot, doesn't really conceptually belong to CPU. Should change 
-        if ((CPU->frame_timer % 4) == 0){ 
-            clock_pulse(data, mem, ch1_period, ch2_period);
-        }
-
-
-        if((CPU->frame_timer % 2) == 0){
-            clock_wave(data, mem);
-        }
+//         //Pandocs: The pulse channels’ period dividers are clocked at 1048576 Hz, once per four dots
+//         //CPU->frame_timer is incrememtned every dot, doesn't really conceptually belong to CPU. Should change 
+//         if ((CPU->frame_timer % 4) == 0){ 
+//          //   clock_pulse(data, mem, ch1_period, ch2_period);
+//         }
 
 
-        //This way of clocking the noise channel seems hazardous. What if NR43 changes at an inopportune time?
-        uint8_t shift = (NR43(mem) >> 4) & 0x0F;
-        //shift being equal to 14 or 15 stops the channel from being clocked entirely.
-        if(shift < 14){
-            uint8_t divider = NR43(mem) & 0x07;
-            //This calculation gives the number of dots for each lfsr clock. It is derived from info about the freq of the lfsr clock on PanDocs
-            uint32_t lfsr_freq = divider ?  (16 * divider * (1<<shift)) : (8 * (1<<shift)); 
-            if((CPU->frame_timer % lfsr_freq) == 0){
-                data->ch4_amp = lfsr_step(data, mem) * data->vols[3];
-            }
-        }
-    // } else {
-    //     for(int i = 0; i<4; i++){
-    //         data->dacs[i] = 0;
-    //         data->timers[i] = 0;
-    //     }
-    // }
+//         if((CPU->frame_timer % 2) == 0){
+//             clock_wave(data, mem);
+//         }
 
 
-}
+//         //This way of clocking the noise channel seems hazardous. What if NR43 changes at an inopportune time?
+        // uint8_t shift = (NR43(mem) >> 4) & 0x0F;
+        // bool ch4_clock = (~NR43(mem)) & 0xE0;
+        // //shift being equal to 14 or 15 stops the channel from being clocked entirely.
+        // if(shift < 14){
+        //     uint8_t divider = NR43(mem) & 0x07;
+        //     //This calculation gives the number of dots for each lfsr clock. It is derived from info about the freq of the lfsr clock on PanDocs
+        //     uint32_t lfsr_freq = divider ?  (16 * divider * (1<<shift)) : (8 * (1<<shift)); 
+        //     if((CPU->frame_timer % lfsr_freq) == 0){
+        //         data->ch4_amp = lfsr_step(data, mem) * data->vols[3];
+        //     }
+        // }
+//     // } else {
+//     //     for(int i = 0; i<4; i++){
+//     //         data->dacs[i] = 0;
+//     //         data->timers[i] = 0;
+//     //     }
+//     // }
+
+
+// }
 
 
 // will be made better
-uint16_t get_sample_left(apu_data *data, memory *mem){
+int16_t get_sample_left(apu_data *data, memory *mem){
 
     if(NR50(mem) & (1<<7))  return 0;
 
@@ -414,21 +498,20 @@ uint16_t get_sample_left(apu_data *data, memory *mem){
 
     uint8_t volume = ((NR50(mem) & 0x70) >> 4) + 1;
 
-    uint16_t sample = (
-                      ch1
+    int16_t sample = (
+                      ch1// -8
                       +
-                      ch2
+                      ch2// - 8
                       +
-                      ch3
+                      ch3// -8
                       +
-                      ch4
-                      ) 
-                    //   * volume
+                      ch4// - 8
+                      ) * 600
                     ;
     return sample;
 }
 
-uint16_t get_sample_right(apu_data *data, memory *mem){
+int16_t get_sample_right(apu_data *data, memory *mem){
     if(NR50(mem) & (1<<3))  return 0;
 
     uint16_t ch1 = (NR51(mem) & (1<<0)) ? data->pulse_amps[0] : 0; 
@@ -436,18 +519,18 @@ uint16_t get_sample_right(apu_data *data, memory *mem){
     uint16_t ch3 = (NR51(mem) & (1<<2)) ? data->ch3_amp : 0; 
     uint16_t ch4 = (NR51(mem) & (1<<3)) ? data->ch4_amp : 0; 
 
-    uint8_t volume = ((NR50(mem) & 0x07) >> 4) + 1;
+    //uint8_t volume = ((NR50(mem) & 0x07) >> 4) + 1;
 
-    uint16_t sample = (
-                      ch1
+    int16_t sample = (
+                      ch1// -8)
                       +
-                      ch2
+                      ch2// -8)
                       +
-                      ch3
+                      ch3// -8)
                       +
-                      ch4
+                      ch4// -8)
                       ) 
-                    //   * volume
+                      * 600
                       ;
     return sample;
 }
