@@ -321,7 +321,7 @@ void cart_init(struct cartridge *cart){
 }
 
 void mem_write(apu_data *audio, struct cartridge *cart, cpu *CPU, memory *mem, uint16_t addr, uint8_t value){
-    inspect_state = MEM_WRITE;
+    // inspect_state = MEM_WRITE;
     if (addr<=0x7FFF){
         cart->MBC_control(cart, addr, value);
     } else if(addr >= 0xA000 && addr <= 0xBFFF){
@@ -332,7 +332,7 @@ void mem_write(apu_data *audio, struct cartridge *cart, cpu *CPU, memory *mem, u
 }
 
 uint8_t mem_read(struct cartridge *cart, cpu *CPU, memory *mem, uint16_t addr){
-    inspect_state = MEM_READ;
+    // inspect_state = MEM_READ;
     if(CPU->transfer && (addr < 0xFF80 || addr == 0xFFFF)){
         return 0xFF;//some rubbish value but 0xFF is the "canonical" returned value
     }

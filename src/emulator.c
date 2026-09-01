@@ -10,53 +10,52 @@
 #include "pico/stdlib.h"
 
 
-uint64_t frames;
+// uint64_t frames;
 
 volatile int buffers_occupied;
 volatile int read_buffer = 0;
 static int32_t buffers[NBUFFERS][BUFFER_SIZE] __attribute__((aligned(NBUFFERS * BUFFER_SIZE)));
 
-int32_t test_data[100];
 
-volatile long unsigned int dma_counter = 0;
+// volatile long unsigned int dma_counter = 0;
 
 volatile enum inspection_state inspect_state;
 
-uint32_t statistics[11];
+// uint32_t statistics[11];
 
-volatile bool timer_fired = false;
-volatile bool init_alarm = false;
-volatile bool start_count = false;
+// volatile bool timer_fired = false;
+// volatile bool init_alarm = false;
+// volatile bool start_count = false;
 
-bool repeating_timer_callback(__unused struct repeating_timer *t) {
-    switch(inspect_state){
-        case PPU:           statistics[0]++;    break;
-        case MEM_READ:      statistics[1]++;    break;
-        case MEM_WRITE:     statistics[2]++;    break;
-        case EXECUTE:       statistics[3]++;    break;
-        case GENERAL:       statistics[4]++;    break;
-        case TIMERS:        statistics[5]++;    break;
-        case DRAW:          statistics[6]++;    break;
-        case DMA:           statistics[7]++;    break;
-        case DOT_LOOP:      statistics[8]++;    break;
-        case APU:           statistics[9]++;    break;
-        case JOYPAD:        statistics[10]++;   break;
+// bool repeating_timer_callback(__unused struct repeating_timer *t) {
+//     switch(inspect_state){
+//         case PPU:           statistics[0]++;    break;
+//         case MEM_READ:      statistics[1]++;    break;
+//         case MEM_WRITE:     statistics[2]++;    break;
+//         case EXECUTE:       statistics[3]++;    break;
+//         case GENERAL:       statistics[4]++;    break;
+//         case TIMERS:        statistics[5]++;    break;
+//         case DRAW:          statistics[6]++;    break;
+//         case DMA:           statistics[7]++;    break;
+//         case DOT_LOOP:      statistics[8]++;    break;
+//         case APU:           statistics[9]++;    break;
+//         case JOYPAD:        statistics[10]++;   break;
         
-    }
-    return true;
-}
+//     }
+//     return true;
+// }
 
-int64_t alarm_callback_0(alarm_id_t id, __unused void *user_data) {
-    init_alarm = true;
-    // Can return a value here in us to fire in the future
-    return 0;
-}
+// int64_t alarm_callback_0(alarm_id_t id, __unused void *user_data) {
+//     init_alarm = true;
+//     // Can return a value here in us to fire in the future
+//     return 0;
+// }
 
-int64_t alarm_callback(alarm_id_t id, __unused void *user_data) {
-    timer_fired = true;
-    // Can return a value here in us to fire in the future
-    return 0;
-}
+// int64_t alarm_callback(alarm_id_t id, __unused void *user_data) {
+//     timer_fired = true;
+//     // Can return a value here in us to fire in the future
+//     return 0;
+// }
 
 static void dma_handler(void)//from RP2040-LCD-LVGL/examples/src/LVGL_example.c
 {
@@ -74,7 +73,7 @@ static void dma_audio_handler(void)
         dma_audio_finish = true;
         read_buffer++;
         read_buffer %= NBUFFERS;
-        if(start_count)  dma_counter++;
+        // if(start_count)  dma_counter++;
         dma_channel_configure(
                             dma_audio_tx,
                             &c_audio,
@@ -135,7 +134,7 @@ int emulate(){
     SET_Infrared_PIN(right);
 
     // set up alarms in 15 seconds
-    add_alarm_in_ms(15000, alarm_callback_0, NULL, false);
+    // add_alarm_in_ms(15000, alarm_callback_0, NULL, false);
 
     apu_data audio_data = {0};
 
@@ -144,22 +143,14 @@ int emulate(){
     audio_data.tick = 0;
     uint32_t audio_timer = 0;
 
-    struct repeating_timer timer;
-    //add_repeating_timer_ms(-1, repeating_timer_callback, NULL, &timer);
+    // struct repeating_timer timer;
 
     dma_finish = true;
 
-    // uint16_t buffer[160 * 144];
-    // memset(buffer, 0x1257, sizeof(buffer));
-    memset(statistics, 0, sizeof(statistics));
+    // memset(statistics, 0, sizeof(statistics));
 
     struct cartridge cart = {0};
 
-    // apu_data audio_data = {0};
-
-    // audio_data.DIV_APU = 0;
-    // audio_data.prev_DIV = 0;
-    // audio_data.tick = 0;
 
     memory meminstance = {0};
     memory *mem = &meminstance; 
@@ -205,16 +196,12 @@ int emulate(){
     //Starting the script is what starts the ROM loading
     int load_begin = getchar();
 
-    LCD_1IN3_Clear(BLUE);
-    DEV_Delay_ms(500);
+    // LCD_1IN3_Clear(BLUE);
+    // DEV_Delay_ms(500);
 
     putchar(1);
 
     int rcv = getchar();
-
-    // if (rcv == PICO_ERROR_TIMEOUT) {
-    //     printf("Received: %d\n", rcv);
-    // }
 
     cart.ROM_size = 0x8000 * (1 << rcv);
 
@@ -222,8 +209,8 @@ int emulate(){
 
     long unsigned int build = 0;
 
-    LCD_1IN3_Clear(WHITE);
-    DEV_Delay_ms(500);
+    // LCD_1IN3_Clear(WHITE);
+    // DEV_Delay_ms(500);
 
     putchar(1);
 
@@ -234,8 +221,6 @@ int emulate(){
         putchar(1);
         build += 0x100;
     }
-
-    // cart.ROM = Tetris__World__gb;
 
     LCD_1IN3_Clear(BLUE);
 
@@ -298,7 +283,6 @@ int emulate(){
     for(int i = 0; i<144*160; i++){
         data->framebuffer[i]=0x9990;
     }
-    //LCD_1IN3_DisplayWindows(0, 0, 160, 144, data->framebuffer);
 
     data->nobjects = 0;
     for(int i = 0; i<10; i++){
@@ -395,7 +379,7 @@ int emulate(){
         mem->boot_mapped = 0;
     }
     
-    bool cancelled;
+    // bool cancelled;
 
     data->ly_count = 0;
     data->mode = MODE2;
@@ -415,39 +399,11 @@ int emulate(){
     }
 
 
-    //int32_t test_data[100];
-    for(int j = 0; j<100; j++){
-        test_data[j] = (j < 50) ? 5000 : -5000;
-    }
 
-    // uint16_t test_frame_buffer[100];
-    // uint16_t test_frame_buffer2[100];
-    // memset(test_frame_buffer, 0xFFFF, sizeof(uint16_t));
-    // memset(test_frame_buffer2, 0x00FF, sizeof(uint16_t));
     
-    // add_alarm_in_ms(20000, alarm_callback, NULL, false);
-    // add_repeating_timer_ms(-1, repeating_timer_callback, NULL, &timer);
 
     long unsigned int audio_counter = 0;
     bool started = false;
-    // while(1){
-    //     if(!(dma_channel_is_busy(dma_audio_tx))){
-    //         audio_counter++;
-    //         dma_channel_configure(
-    //             dma_audio_tx,
-    //             &c_audio,
-    //             &audio_format.pio->txf[audio_format.sm], // destination: PIO TX FIFO
-    //             test_data,//[read_buffer],                             // source
-    //             dma_encode_transfer_count(100),
-    //             true                                     // start now
-    //         );
-    //         if(timer_fired){
-    //             printf("DMAs    %lu" "counter   %lu", dma_counter, audio_counter);
-    //             timer_fired = false;
-    //             break;
-    //         }
-    //     } else;
-    // }
 
     LCD_1IN3_Clear(GREEN); 
 
@@ -455,40 +411,40 @@ int emulate(){
 
         // inspect_state = JOYPAD;
 
-        // assign_joyp(mem, joypad);
-        inspect_state = GENERAL;
+        assign_joyp(mem, joypad);
+        // inspect_state = GENERAL;
 
-        if(init_alarm){
-            add_alarm_in_ms(20000, alarm_callback, NULL, false);
-            add_repeating_timer_ms(-1, repeating_timer_callback, NULL, &timer);
-            init_alarm = false;
-            start_count = true;
-        }
+        // if(init_alarm){
+        //     add_alarm_in_ms(20000, alarm_callback, NULL, false);
+        //     add_repeating_timer_ms(-1, repeating_timer_callback, NULL, &timer);
+        //     init_alarm = false;
+        //     start_count = true;
+        // }
 
-        if(timer_fired){
-            cancelled = cancel_repeating_timer(&timer); 
-            while(!dma_finish){}
-            LCD_1IN3_Clear(BLUE); 
-            printf(
-            "PPU         %lu\n"
-            "MEM_READ    %lu\n"
-            "MEM_WRITE   %lu\n"
-            "EXECUTE     %lu\n"
-            "GENERAL     %lu\n"
-            "TIMERS      %lu\n"
-            "DRAW        %lu\n"
-            "DMA         %lu\n"
-            "DOT_LOOP    %lu\n"
-            "APU         %lu\n"
-            "JOYPAD      %lu\n"
-            "audio dmas  %lu\n",
-            statistics[0],statistics[1],statistics[2],statistics[3],
-            statistics[4],statistics[5],statistics[6],statistics[7],
-            statistics[8],statistics[9],statistics[10],dma_counter);
-            printf("Frame counter   %llu", frames);
-            DEV_Delay_ms(4000); 
-            timer_fired = 0;
-        }
+        // if(timer_fired){
+        //     cancelled = cancel_repeating_timer(&timer); 
+        //     while(!dma_finish){}
+        //     LCD_1IN3_Clear(BLUE); 
+        //     printf(
+        //     "PPU         %lu\n"
+        //     "MEM_READ    %lu\n"
+        //     "MEM_WRITE   %lu\n"
+        //     "EXECUTE     %lu\n"
+        //     "GENERAL     %lu\n"
+        //     "TIMERS      %lu\n"
+        //     "DRAW        %lu\n"
+        //     "DMA         %lu\n"
+        //     "DOT_LOOP    %lu\n"
+        //     "APU         %lu\n"
+        //     "JOYPAD      %lu\n"
+        //     "audio dmas  %lu\n",
+        //     statistics[0],statistics[1],statistics[2],statistics[3],
+        //     statistics[4],statistics[5],statistics[6],statistics[7],
+        //     statistics[8],statistics[9],statistics[10],dma_counter);
+        //     printf("Frame counter   %llu", frames);
+        //     DEV_Delay_ms(4000); 
+        //     timer_fired = 0;
+        // }
 
         uint8_t prev_DIV = DIV(mem);
 
@@ -567,7 +523,6 @@ int emulate(){
         }
 
         if(CPU->transfer_pending){
-            //printf("transfer\n");
             inspect_state = DMA;
             OAM_DMA_Transfer(&cart, mem);
             CPU->transfer_pending = false;
@@ -665,30 +620,29 @@ int emulate(){
             //     }
             // }
         }
-        inspect_state = GENERAL;
+        // inspect_state = GENERAL;
 
-        //CPU->F &= 0xF0;
+        CPU->F &= 0xF0;
         if(CPU->draw){
-            inspect_state = DRAW;
+            // inspect_state = DRAW;
             if(dma_finish){
                 LCD_1IN3_DisplayWindows(0, 0, 160, 144, data->framebuffer);
                 dma_finish = 0;
             }
             CPU->draw = 0;
-            // joypad = (
-            //     (DEV_Digital_Read(keyY)     << 7)   |
-            //     (DEV_Digital_Read(keyX)     << 6)   |
-            //     (DEV_Digital_Read(keyB)     << 5)   |
-            //     (DEV_Digital_Read(keyA)     << 4)   |
-            //     (DEV_Digital_Read(down)     << 3)   |
-            //     (DEV_Digital_Read(up)       << 2)   |
-            //     (DEV_Digital_Read(left)     << 1)   |
-            //     DEV_Digital_Read(right)
-            // );
+            joypad = (
+                (DEV_Digital_Read(keyY)     << 7)   |
+                (DEV_Digital_Read(keyX)     << 6)   |
+                (DEV_Digital_Read(keyB)     << 5)   |
+                (DEV_Digital_Read(keyA)     << 4)   |
+                (DEV_Digital_Read(down)     << 3)   |
+                (DEV_Digital_Read(up)       << 2)   |
+                (DEV_Digital_Read(left)     << 1)   |
+                DEV_Digital_Read(right)
+            );
 
-            assign_joyp(mem, joypad);
-            frames++;
-            inspect_state = GENERAL;
+            // frames++;
+            // inspect_state = GENERAL;
             
         }
 

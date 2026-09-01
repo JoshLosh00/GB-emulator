@@ -5,9 +5,6 @@
 #include "audio_data.h"
 #include "audio_pio.h"
 #include "infrared.h"
-// #include "01-special.h"
-// #include "dmg.h"
-//#include <SDL2/SDL.h>
 
 //in DMG, double speed mode in CGB is twice this
 #define MASTER_CLOCK 4194304
@@ -127,16 +124,6 @@
 
 #pragma once
 
-/*struct MBC1{
-    uint8_t RAM_enable;
-    uint8_t ROM_bank_number;
-    uint8_t RAM_bank_number;
-    uint8_t Banking_mode_select;
-    int current_RAM;
-    int current_bank_a;
-    int current_bank_b;
-    int banks;
-};*/
 
 struct cartridge{
     enum {
@@ -206,7 +193,6 @@ typedef struct {
     bool draw;
     int instance;
     //flags to (re)trigger audio channels
-    //These do not really conceptually belong here. I'll put them here for now but will change
     bool audio_triggers[4];
     bool length_enable[4];
 } cpu;
@@ -259,7 +245,7 @@ typedef struct{
     bool ch4_clock;
 } apu_data;
 
-typedef struct {//As of now this contains redundant fields.They're needed for the FIFO
+typedef struct {
     int nobjects;
     uint16_t objects[10];
     int8_t obj_scanline[160];
@@ -308,28 +294,6 @@ struct state {
     int counter;
 };
 
-// struct debug_state {
-//     bool on;
-//     bool on_req;
-//     bool broken;
-//     uint32_t framebuffer[DEBUG_HEIGHT * DEBUG_WIDTH];
-//     unsigned int x;
-//     unsigned int y;
-//     SDL_Window *Window;
-//     SDL_Texture *Texture;
-//     SDL_Renderer *Renderer;
-//     char *command;
-//     size_t command_length;
-//     //char *buffer;
-//     bool send;
-//     bool paused;
-//     uint64_t timer;
-//     uint64_t then;
-//     double emu_fps;
-//     uint16_t breakpoints[10];
-//     size_t nbreaks;
-// };
-
 typedef enum {
     JR,
     NONE,
@@ -354,10 +318,6 @@ uint32_t execute(apu_data *data, struct cartridge *cart, cpu *CPU, memory *mem);
 
 uint32_t interrupt_service(apu_data *data, struct cartridge *cart, cpu *CPU, memory *mem, int bit);
 
-//void debugger(struct debug_state *debug, struct cartridge *cart, cpu *CPU, memory *mem);
-
-//void init_table(void);
-
 void mem_write(apu_data *data, struct cartridge *cart, cpu *CPU, memory *mem, uint16_t addr, uint8_t value);
 
 uint8_t mem_read(struct cartridge *cart, cpu *CPU, memory *mem, uint16_t addr);
@@ -374,8 +334,6 @@ void OAM_DMA_Transfer(struct cartridge *cart, memory *mem);
 
 extern op_info operations[512];
 
-//void apu(memory *mem, apu_data *data, cpu *CPU/*I only need the frame timer, should probably take this out of the CPU struct*/);
-
 int16_t get_sample_left(apu_data *data, memory *mem);
 int16_t get_sample_right(apu_data *data, memory *mem);
 
@@ -383,13 +341,11 @@ void trigger_pulse(apu_data *data, memory *mem, int channel);
 void trigger_wave(apu_data *data, memory *mem);
 void trigger_noise(apu_data *data, memory *mem);
 
-void clock_pulse(apu_data *data, memory *mem/*, uint16_t period_1, uint16_t period_2*/ );
+void clock_pulse(apu_data *data, memory *mem);
 void clock_wave(apu_data *data, memory *mem);
 void lfsr_step(apu_data *data, memory *mem);
 
 void apu_div_actions(apu_data *data, cpu *CPU, memory *mem);
-
-//extern volatile uint32_t statistics[5];
 
 enum inspection_state {
     PPU,
@@ -406,10 +362,3 @@ enum inspection_state {
 }; 
 
 extern volatile enum inspection_state inspect_state;
-
-// uint8_t waveform[4][8] = {
-//     {1,1,1,1,1,1,1,0},
-//     {0,1,1,1,1,1,1,0},
-//     {0,1,1,1,1,0,0,0},
-//     {1,0,0,0,0,0,0,1}
-// };
