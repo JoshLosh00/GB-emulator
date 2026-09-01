@@ -29,9 +29,6 @@ def main():
         start += 0x100
         ack = ser.read(1)
         
-#if __name__ == "__main__":
-#    import sys
-#    main(sys.argv[1])
     
     
     
