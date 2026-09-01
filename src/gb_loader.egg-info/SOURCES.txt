@@ -1,0 +1,6 @@
+pyproject.toml
+src/gb_loader.egg-info/PKG-INFO
+src/gb_loader.egg-info/SOURCES.txt
+src/gb_loader.egg-info/dependency_links.txt
+src/gb_loader.egg-info/entry_points.txt
+src/gb_loader.egg-info/top_level.txt

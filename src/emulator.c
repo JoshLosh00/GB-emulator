@@ -12,12 +12,21 @@
 
 uint64_t frames;
 
+volatile int buffers_occupied;
+volatile int read_buffer = 0;
+static int32_t buffers[NBUFFERS][BUFFER_SIZE] __attribute__((aligned(NBUFFERS * BUFFER_SIZE)));
+
+int32_t test_data[100];
+
+volatile long unsigned int dma_counter = 0;
+
 volatile enum inspection_state inspect_state;
 
 uint32_t statistics[11];
 
 volatile bool timer_fired = false;
 volatile bool init_alarm = false;
+volatile bool start_count = false;
 
 bool repeating_timer_callback(__unused struct repeating_timer *t) {
     switch(inspect_state){
@@ -55,6 +64,25 @@ static void dma_handler(void)//from RP2040-LCD-LVGL/examples/src/LVGL_example.c
         dma_channel_acknowledge_irq0(dma_tx);
         DEV_Digital_Write(LCD_CS_PIN, 1);
         dma_finish = true;
+    }
+}
+
+static void dma_audio_handler(void)
+{
+    if (dma_channel_get_irq1_status(dma_audio_tx)) {
+        dma_channel_acknowledge_irq1(dma_audio_tx);
+        dma_audio_finish = true;
+        read_buffer++;
+        read_buffer %= NBUFFERS;
+        if(start_count)  dma_counter++;
+        dma_channel_configure(
+                            dma_audio_tx,
+                            &c_audio,
+                            &audio_format.pio->txf[audio_format.sm], // destination: PIO TX FIFO
+                            buffers[read_buffer],                          // source
+                            dma_encode_transfer_count(BUFFER_SIZE),
+                            true                                     // start now
+                        );
     }
 }
 
@@ -149,7 +177,7 @@ int emulate(){
     uint8_t joypad = 0xFF; //Bits 0-3 are D-pad, 4-7 are the others
 
     bool leave = 0;
-    bool quick_boot = 1;
+    bool quick_boot = 0;
 
     if(DEV_Module_Init()!=0){
         return -1;
@@ -167,7 +195,49 @@ int emulate(){
     irq_set_exclusive_handler(DMA_IRQ_0, dma_handler);
     irq_set_enabled(DMA_IRQ_0, true);
 
-    cart.ROM = Tetris__World__gb;
+    dma_channel_set_irq1_enabled(dma_audio_tx, true);
+    irq_set_exclusive_handler(DMA_IRQ_1, dma_audio_handler);
+    irq_set_enabled(DMA_IRQ_1, true);
+
+
+    //ROM loading
+
+    //Starting the script is what starts the ROM loading
+    int load_begin = getchar();
+
+    LCD_1IN3_Clear(BLUE);
+    DEV_Delay_ms(500);
+
+    putchar(1);
+
+    int rcv = getchar();
+
+    // if (rcv == PICO_ERROR_TIMEOUT) {
+    //     printf("Received: %d\n", rcv);
+    // }
+
+    cart.ROM_size = 0x8000 * (1 << rcv);
+
+    cart.ROM = malloc(cart.ROM_size);
+
+    long unsigned int build = 0;
+
+    LCD_1IN3_Clear(WHITE);
+    DEV_Delay_ms(500);
+
+    putchar(1);
+
+    while(build < cart.ROM_size){
+        for(int i = build; i< build + 0x100; i++){
+            cart.ROM[i] = getchar();
+        }
+        putchar(1);
+        build += 0x100;
+    }
+
+    // cart.ROM = Tetris__World__gb;
+
+    LCD_1IN3_Clear(BLUE);
 
     uint8_t cart_type = cart.ROM[0x147];
 
@@ -333,31 +403,66 @@ int emulate(){
     int ch4_counter = 0;
     long int audio_phase = 0;
 
+    int write_buffer = 0;
     int sample_size = 0;
     int sample_index = 0;
-    static int32_t samples[64] __attribute__((aligned(256)));
-    memset(samples, 0, sizeof(samples));
+    int buffer_index = 0;
 
-     //   int32_t *samples = (int32_t *)calloc(100, sizeof(int32_t));//(int32_t *)data_treating( sine_wave_table , 256 );
-	for(int i = 0; i < 64; i++){
-		samples[i] = i & 0x8 ? 0x1000 * 65536 : 0xF000 * 65536;
-	}
-	for(int i = 0; i < 64; i++){
-		samples[i] |= ((i /20) & 1) ? 0x1000: 0xF000;
-	}
+    for(int i = 0; i<NBUFFERS; i++){
+        for(int j = 0; j<BUFFER_SIZE; j++){
+            buffers[i][j] = (j & 0x4) ? 0x1000 : 0xF000;
+        }
+    }
+
+
+    //int32_t test_data[100];
+    for(int j = 0; j<100; j++){
+        test_data[j] = (j < 50) ? 5000 : -5000;
+    }
+
+    // uint16_t test_frame_buffer[100];
+    // uint16_t test_frame_buffer2[100];
+    // memset(test_frame_buffer, 0xFFFF, sizeof(uint16_t));
+    // memset(test_frame_buffer2, 0x00FF, sizeof(uint16_t));
+    
+    // add_alarm_in_ms(20000, alarm_callback, NULL, false);
+    // add_repeating_timer_ms(-1, repeating_timer_callback, NULL, &timer);
+
+    long unsigned int audio_counter = 0;
+    bool started = false;
+    // while(1){
+    //     if(!(dma_channel_is_busy(dma_audio_tx))){
+    //         audio_counter++;
+    //         dma_channel_configure(
+    //             dma_audio_tx,
+    //             &c_audio,
+    //             &audio_format.pio->txf[audio_format.sm], // destination: PIO TX FIFO
+    //             test_data,//[read_buffer],                             // source
+    //             dma_encode_transfer_count(100),
+    //             true                                     // start now
+    //         );
+    //         if(timer_fired){
+    //             printf("DMAs    %lu" "counter   %lu", dma_counter, audio_counter);
+    //             timer_fired = false;
+    //             break;
+    //         }
+    //     } else;
+    // }
+
+    LCD_1IN3_Clear(GREEN); 
 
     while(1){
 
-        inspect_state = JOYPAD;
+        // inspect_state = JOYPAD;
 
-        assign_joyp(mem, joypad);
+        // assign_joyp(mem, joypad);
         inspect_state = GENERAL;
-        //assign_joyp(mem, joypad);//The way the joypad works is that it must be continuously updated probably not every call though
 
         if(init_alarm){
             add_alarm_in_ms(20000, alarm_callback, NULL, false);
             add_repeating_timer_ms(-1, repeating_timer_callback, NULL, &timer);
             init_alarm = false;
+            start_count = true;
         }
 
         if(timer_fired){
@@ -375,8 +480,11 @@ int emulate(){
             "DMA         %lu\n"
             "DOT_LOOP    %lu\n"
             "APU         %lu\n"
-            "JOYPAD      %lu\n",
-            statistics[0],statistics[1],statistics[2],statistics[3],statistics[4],statistics[5],statistics[6],statistics[7],statistics[8],statistics[9],statistics[10]);
+            "JOYPAD      %lu\n"
+            "audio dmas  %lu\n",
+            statistics[0],statistics[1],statistics[2],statistics[3],
+            statistics[4],statistics[5],statistics[6],statistics[7],
+            statistics[8],statistics[9],statistics[10],dma_counter);
             printf("Frame counter   %llu", frames);
             DEV_Delay_ms(4000); 
             timer_fired = 0;
@@ -517,43 +625,44 @@ int emulate(){
             }
 
             //apu
-            {
-                clock_pulse(&audio_data, mem);
-                // clock_wave(&audio_data, mem);
-                // clock_wave(&audio_data, mem);
-                // if(audio_data.ch4_clock){
-                //     if(++ch4_counter >= audio_data.ch4_target){//putting == here silences channel 4 after it gets turned off. 
-                //         ch4_counter = 0;
-                //         lfsr_step(&audio_data, mem);
-                //     }
-                // }
-                audio_phase += 4*PICO_AUDIO_FREQ;
-                if(audio_phase >= MASTER_CLOCK){
-                    audio_phase -= MASTER_CLOCK;
-                    //if(sample_size == 64)     sample_size = 0;
-                    samples[sample_size++] = (get_sample_left(&audio_data, mem) << 16) | get_sample_right(&audio_data, mem);
-                    if(sample_size == 64)     sample_size = 0;
-                    dma_channel_configure(
-                        dma_audio_tx,
-                        &c_audio,
-                        &audio_format.pio->txf[audio_format.sm], // destination: PIO TX FIFO
-                        samples,                                 // source
-                        dma_encode_transfer_count(64),
-                        true                                     // start now
-                    );
-                    // samples[sample_size++] = get_sample_right(&audio_data, mem);
-                    // while (!pio_sm_is_tx_fifo_full(audio_format.pio, audio_format.sm)) {
-                    //     pio_sm_put(audio_format.pio, audio_format.sm, samples[sample_index++]);
-                    //     if(sample_index == 64)      sample_index = 0;
-                    // }
-                }
-            }
+            // {
+            //     // clock_pulse(&audio_data, mem);
+            //     // clock_wave(&audio_data, mem);
+            //     // clock_wave(&audio_data, mem);
+            //     // if(audio_data.ch4_clock){
+            //     //     if(++ch4_counter >= audio_data.ch4_target){//putting == here silences channel 4 after it gets turned off. 
+            //     //         ch4_counter = 0;
+            //     //         lfsr_step(&audio_data, mem);
+            //     //     }
+            //     // }
+            //     audio_phase += 4*PICO_AUDIO_FREQ;
+            //     if(audio_phase >= MASTER_CLOCK){
+            //         audio_phase -= MASTER_CLOCK;
+            //         buffers[write_buffer][sample_size++] = /*(get_sample_left(&audio_data, mem) << 16) |*/ (get_sample_right(&audio_data, mem) & 0xFFFF);
+            //         if(sample_size == BUFFER_SIZE)     {
+            //             buffers_occupied++;
+            //             write_buffer++;
+            //             write_buffer %= NBUFFERS;
+            //             while(write_buffer == read_buffer){
+            //                 tight_loop_contents();
+            //             }
+                        
 
-
-            // if(CPU->frame_timer >= 70223){//one frame has passed
-            // CPU->frame_timer= 0;
-            // } else{
-            //     CPU->frame_timer++;
+            //             sample_size = 0;
+            //             // while(!dma_audio_finish) {}
+            //             if(!started){
+            //                 started = true;
+            //                 dma_channel_configure(
+            //                     dma_audio_tx,
+            //                     &c_audio,
+            //                     &audio_format.pio->txf[audio_format.sm], // destination: PIO TX FIFO
+            //                     buffers[read_buffer],//[read_buffer],                             // source
+            //                     dma_encode_transfer_count(BUFFER_SIZE),
+            //                     true                                     // start now
+            //                 );
+            //             }
+            //         }
+            //     }
             // }
         }
         inspect_state = GENERAL;
@@ -566,16 +675,16 @@ int emulate(){
                 dma_finish = 0;
             }
             CPU->draw = 0;
-            joypad = (
-                (DEV_Digital_Read(keyY)     << 7)   |
-                (DEV_Digital_Read(keyX)     << 6)   |
-                (DEV_Digital_Read(keyB)     << 5)   |
-                (DEV_Digital_Read(keyA)     << 4)   |
-                (DEV_Digital_Read(down)     << 3)   |
-                (DEV_Digital_Read(up)       << 2)   |
-                (DEV_Digital_Read(left)     << 1)   |
-                DEV_Digital_Read(right)
-            );
+            // joypad = (
+            //     (DEV_Digital_Read(keyY)     << 7)   |
+            //     (DEV_Digital_Read(keyX)     << 6)   |
+            //     (DEV_Digital_Read(keyB)     << 5)   |
+            //     (DEV_Digital_Read(keyA)     << 4)   |
+            //     (DEV_Digital_Read(down)     << 3)   |
+            //     (DEV_Digital_Read(up)       << 2)   |
+            //     (DEV_Digital_Read(left)     << 1)   |
+            //     DEV_Digital_Read(right)
+            // );
 
             assign_joyp(mem, joypad);
             frames++;
@@ -592,8 +701,6 @@ int emulate(){
 
         // }
 
-
-       //if(leave) break;
 
     }
 

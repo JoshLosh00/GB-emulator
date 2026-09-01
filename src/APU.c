@@ -3,9 +3,6 @@
 #include <stdlib.h>
 #include "emulator.h"
 
-//A possible bug is in the channel triggers. At present, setting bit 7 of NRX4 to 1 when it was previously 0 does not trigger the channel.
-//This is how it's supposed to work according to PanDocs "Writing any value to NRX4 with bit 7 set triggers the channel"
-//But it is possible that writing 1 to bit 7 also causes a channel trigger
 
 
 //The duty cycles of the pulse channels
@@ -491,22 +488,29 @@ int16_t get_sample_left(apu_data *data, memory *mem){
 
     if(NR50(mem) & (1<<7))  return 0;
 
-    uint16_t ch1 = (NR51(mem) & (1<<4)) ? data->pulse_amps[0] : 0; 
-    uint16_t ch2 = (NR51(mem) & (1<<5)) ? data->pulse_amps[1] : 0; 
-    uint16_t ch3 = (NR51(mem) & (1<<6)) ? data->ch3_amp : 0; 
-    uint16_t ch4 = (NR51(mem) & (1<<7)) ? data->ch4_amp : 0; 
+    int16_t ch1 = data->dacs[0] && (NR51(mem) & (1<<4)) ? data->pulse_amps[0] : 0;
+    ch1 = 15 - 2*ch1;  
+
+    int16_t ch2 = data->dacs[0] && (NR51(mem) & (1<<5)) ? data->pulse_amps[1] : 0;
+    ch2 = 15 - 2*ch2;
+
+    int16_t ch3 = data->dacs[0] && (NR51(mem) & (1<<6)) ? data->pulse_amps[2] : 0;
+    ch3 = 15 - 2*ch3;
+
+    int16_t ch4 = data->dacs[0] && (NR51(mem) & (1<<7)) ? data->pulse_amps[3] : 0;
+    ch4 = 15 - 2*ch4;
 
     uint8_t volume = ((NR50(mem) & 0x70) >> 4) + 1;
 
     int16_t sample = (
-                      ch1// -8
+                      ch1
                       +
-                      ch2// - 8
+                      ch2
                       +
-                      ch3// -8
+                      ch3
                       +
-                      ch4// - 8
-                      ) * 600
+                      ch4
+                      ) * volume
                     ;
     return sample;
 }
@@ -514,23 +518,30 @@ int16_t get_sample_left(apu_data *data, memory *mem){
 int16_t get_sample_right(apu_data *data, memory *mem){
     if(NR50(mem) & (1<<3))  return 0;
 
-    uint16_t ch1 = (NR51(mem) & (1<<0)) ? data->pulse_amps[0] : 0; 
-    uint16_t ch2 = (NR51(mem) & (1<<1)) ? data->pulse_amps[1] : 0; 
-    uint16_t ch3 = (NR51(mem) & (1<<2)) ? data->ch3_amp : 0; 
-    uint16_t ch4 = (NR51(mem) & (1<<3)) ? data->ch4_amp : 0; 
+    int16_t ch1 = data->dacs[0] && (NR51(mem) & (1)) ? data->pulse_amps[0] : 0;
+    ch1 = 15 - 2*ch1;  
 
-    //uint8_t volume = ((NR50(mem) & 0x07) >> 4) + 1;
+    int16_t ch2 = data->dacs[0] && (NR51(mem) & (1<<1)) ? data->pulse_amps[1] : 0;
+    ch2 = 15 - 2*ch2;
+
+    int16_t ch3 = data->dacs[0] && (NR51(mem) & (1<<2)) ? data->pulse_amps[2] : 0;
+    ch3 = 15 - 2*ch3;
+
+    int16_t ch4 = data->dacs[0] && (NR51(mem) & (1<<3)) ? data->pulse_amps[3] : 0;
+    ch4 = 15 - 2*ch4;
+    
+    uint8_t volume = ((NR50(mem) & 0x07) >> 4) + 1;
 
     int16_t sample = (
-                      ch1// -8)
+                      ch1
                       +
-                      ch2// -8)
+                      ch2
                       +
-                      ch3// -8)
+                      ch3
                       +
-                      ch4// -8)
+                      ch4
                       ) 
-                      * 600
+                      * volume
                       ;
     return sample;
 }

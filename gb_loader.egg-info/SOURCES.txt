@@ -1,0 +1,7 @@
+pyproject.toml
+send_script.py
+gb_loader.egg-info/PKG-INFO
+gb_loader.egg-info/SOURCES.txt
+gb_loader.egg-info/dependency_links.txt
+gb_loader.egg-info/entry_points.txt
+gb_loader.egg-info/top_level.txt

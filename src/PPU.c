@@ -233,14 +233,14 @@ void mix(memory *mem, ppu_data *data){
         int j = i - data->scanx;
         uint8_t colour;
         //if(i == 17) printf("position 17 is currently %d\n", data->obj_scanline[17]);
-        if((data->obj_scanline[i] > 0) || ((data->obj_scanline[i] < 0) && (data->BGcolours[j] == 0))){
-            uint8_t palette = (data->obj_scanline[i] & (1<<6)) ? OBP1(mem) : OBP0(mem);
-            uint8_t id = data->obj_scanline[i] & 0x03;
-            colour = (palette >> (2*id)) & 0x03;
-        } else{
+        // if((data->obj_scanline[i] > 0) || ((data->obj_scanline[i] < 0) && (data->BGcolours[j] == 0))){
+        //     uint8_t palette = (data->obj_scanline[i] & (1<<6)) ? OBP1(mem) : OBP0(mem);
+        //     uint8_t id = data->obj_scanline[i] & 0x03;
+        //     colour = (palette >> (2*id)) & 0x03;
+        // } else{
             uint8_t id = data->BGcolours[j] & 0x03;
             colour = (BGP(mem) >> (2*id)) & 0x03;
-        }
+        // }
         data->framebuffer[160*LY(mem) + i] = DMGcolours[colour];
     }
     
@@ -337,7 +337,7 @@ int ppu(struct cartridge *cart ,cpu *CPU, memory *mem, ppu_data *data){
             }
 
             get_tile(mem,data);
-            populate_objects(mem,data);
+            // populate_objects(mem,data);
             mix(mem,data);
             data->length += 8;
             if(data->scanx >= 160){

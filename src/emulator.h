@@ -12,6 +12,10 @@
 //in DMG, double speed mode in CGB is twice this
 #define MASTER_CLOCK 4194304
 
+//Information for audio generation
+#define NBUFFERS 4
+#define BUFFER_SIZE 128
+
 #define Z 0x80
 #define N 0x40
 #define Hf 0x20
@@ -106,6 +110,7 @@
 #define NR51(m) IOREG((m),NR51addr)
 #define NR52(m) IOREG((m),NR52addr)
 #define BANK(m) IOREG((m),BANKaddr)
+
 #define IE(m) (m)->Interrupt_Enable
 
 //Debug macros
