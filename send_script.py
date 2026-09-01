@@ -1,6 +1,13 @@
 import serial
+import sys
 
-def main(name):
+def main():
+    if len(sys.argv) != 2: 
+        print("Usage: gb-load <rom>") 
+        sys.exit(1)
+         
+    name = sys.argv[1]
+    
     with open(name, 'rb') as f:
         game = bytearray(f.read())
     
@@ -22,9 +29,9 @@ def main(name):
         start += 0x100
         ack = ser.read(1)
         
-if __name__ == "__main__":
-    import sys
-    main(sys.argv[1])
+#if __name__ == "__main__":
+#    import sys
+#    main(sys.argv[1])
     
     
     
