@@ -1,8 +1,1 @@
-PS C:\Users\USER\projects\pico-emulator\build> cd ..
-PS C:\Users\USER\projects\pico-emulator> Remove-Item -Recurse -Force build                                                                                                      
-PS C:\Users\USER\projects\pico-emulator> mkdir build     
-PS C:\Users\USER\projects\pico-emulator> cd build                                                                                                                               
-PS C:\Users\USER\projects\pico-emulator\build> $env:PICO_SDK_PATH = "C:\Users\USER\.pico-sdk\sdk\2.3.0"                                                                               
-PS C:\Users\USER\projects\pico-emulator\build> $env:PICO_TOOLCHAIN_PATH = "C:\Users\USER\.pico-sdk\toolchain\15_2_Rel1\bin"                                                           
-PS C:\Users\USER\projects\pico-emulator\build> cd
-cmake -G Ninja -DPICO_BOARD=pico2 -DPICO_PLATFORM=rp2350 -DCMAKE_BUILD_TYPE=Release ..
+
