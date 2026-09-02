@@ -2,6 +2,9 @@
 #include <stdbool.h>
 #include <SDL2/SDL.h>
 
+//in DMG, double speed mode in CGB is twice this
+#define MASTER_CLOCK 4194304
+
 #define Z 0x80
 #define N 0x40
 #define Hf 0x20
@@ -55,25 +58,25 @@
 #define BANKaddr 0xFF50
 
 #define JOYP(m) IOREG((m),JOYPaddr)
-#define SCX(m) IOREG((m),SCXaddr)
-#define SCY(m) IOREG((m),SCYaddr)
-#define LY(m) IOREG((m),LYaddr)
+#define SB(m)   IOREG((m),SBaddr)
+#define SC(m)   IOREG((m),SCaddr)
+#define SCX(m)  IOREG((m),SCXaddr)
+#define SCY(m)  IOREG((m),SCYaddr)
+#define LY(m)   IOREG((m),LYaddr)
 #define LCDC(m) IOREG((m),LCDCaddr)
-#define WY(m) IOREG((m),WYaddr)
-#define WX(m) IOREG((m),WXaddr)
-#define BGP(m) IOREG((m),BGPaddr)
+#define WY(m)   IOREG((m),WYaddr)
+#define WX(m)   IOREG((m),WXaddr)
+#define BGP(m)  IOREG((m),BGPaddr)
 #define OBP0(m) IOREG((m),OBP0addr)
 #define OBP1(m) IOREG((m),OBP1addr)
 #define STAT(m) IOREG((m),STATaddr)
-#define IF(m) IOREG((m),IFaddr)
-#define LYC(m) IOREG((m),LYCaddr)
-#define DMA(m) IOREG((m),DMAaddr)
-#define SB(m) IOREG((m),SBaddr)
-#define SC(m) IOREG((m),SCaddr)
-#define DIV(m) IOREG((m),DIVaddr)
+#define IF(m)   IOREG((m),IFaddr)
+#define LYC(m)  IOREG((m),LYCaddr)
+#define DMA(m)  IOREG((m),DMAaddr)
+#define DIV(m)  IOREG((m),DIVaddr)
 #define TIMA(m) IOREG((m),TIMAaddr)
-#define TMA(m) IOREG((m),TMAaddr)
-#define TAC(m) IOREG((m),TACaddr)
+#define TMA(m)  IOREG((m),TMAaddr)
+#define TAC(m)  IOREG((m),TACaddr)
 #define NR10(m) IOREG((m),NR10addr)
 #define NR11(m) IOREG((m),NR11addr)
 #define NR12(m) IOREG((m),NR12addr)
@@ -98,9 +101,21 @@
 #define BANK(m) IOREG((m),BANKaddr)
 #define IE(m) (m)->Interrupt_Enable
 
-//Debug definitions
+//Debug macros
 #define DEBUG_HEIGHT 144*2//must be multiples of 8
 #define DEBUG_WIDTH 160*3
+
+
+//APU macros
+
+#define SAMPLE_RATE 44100
+
+//For NR11, do NRX1(mem, 0)
+#define NRX1(mem, i) IOREG((mem), NR11addr + 5*i)
+#define NRX2(mem, i) IOREG((mem), NR12addr + 5*i)
+#define NRX3(mem, i) IOREG((mem), NR13addr + 5*i)
+#define NRX4(mem, i) IOREG((mem), NR14addr + 5*i)
+
 
 #pragma once
 
@@ -127,18 +142,25 @@ struct cartridge{
     uint8_t ROM_bank_number_9;
     uint8_t RAM_bank_number;
     uint8_t Banking_mode_select;
+
+    void (*MBC_control) (struct cartridge *cart, uint16_t addr, uint8_t value);
+    uint8_t (*cart_read) (struct cartridge *cart, uint16_t addr);
+    void (*write_exRAM) (struct cartridge *cart, uint16_t addr, uint8_t value);
 };
 
+//DO NOT reallocate memory without considering how it affects the APU 
 typedef struct{
     uint8_t boot_ROM[0x100];
     bool boot_mapped;
 
+    //uint8_t *ROM;//0-7FFF
     uint8_t VRAM[0x2000];//2 banks in gbc mode 8000-9FFF
+    //uint8_t *external_RAM;//A000-BFFF
     uint8_t WRAM[0x2000];//C000-DFFFF, in gbc mode D000-DFFF is switchable
     //Echo ram E000-FDFF
     uint8_t OAM[0xA0];//FE000-FE9F
     //FEA0 - FEFF is unused
-    uint8_t IO[0x80];//I/O registers
+    uint8_t IO[0x80];//FF00-FF7F I/O registers
     uint8_t HRAM[0x7F];//FF80-FFFE
     uint8_t Interrupt_Enable;//FFFF
 
@@ -164,23 +186,103 @@ typedef struct {
     bool VRAM_access;
     bool draw;
     int instance;
+    //flags to (re)trigger audio channels
+    //These do not really conceptually belong here. I'll put them here for now but will change
+    bool audio_triggers[4];
+    bool length_enable[4];
+    
+    //debug
+    bool counter_enable;
+    bool begin_count;
+    int counter; 
+    int frames;
+
 } cpu;
+
+typedef struct{
+
+    uint16_t DIV_APU;
+    uint16_t prev_DIV;
+
+    //The length timers are dependent on NRX1 which describes its initial position 
+    uint16_t timers[4];
+
+    uint16_t pulse_divs[2];
+    uint16_t ch3_div;
+    uint16_t ch4_div;
+
+    uint16_t lfsr;
+    
+    //data relating to ch1's sweep functionality
+    uint16_t shadow;
+    uint8_t sweep_pace;
+    uint8_t sweep_pos;
+    bool sweep_enabled;
+    
+    //The waveforms of ch1 and 2 are blockwaves, the amplitude is either max or 0
+    //To calculate whether the amp is high or low, the position of the current sample (0 - 7) is consulted and checked against the waveform 
+    //specified by the duty cycle.
+    //ch1_pos gives the number 1-8 of which sample we're on.
+
+    uint8_t pulse_pos[2];
+    uint8_t ch3_pos;
+    //The length timers are dependent on NRX1 which describes its initial position 
+    //The amp entries give the current amplitude of the channel's waveform
+    uint8_t pulse_amps[2];
+    uint8_t ch3_amp;
+    uint8_t ch4_amp;
+    //The vol entries give the volume of the channel
+    uint8_t vols[4];
+    //Envelope timers for channels 1, 2 and 4
+    uint8_t env_timers[3];
+
+    bool tick;
+    //dac status
+    bool dacs[4];
+    //channel status. This is also reported by NR52 but
+    //"writing to those does not enable or disable the channels, despite many emulators behaving as if it does." 
+    bool channel_status[4];
+
+    int ch4_target;
+    bool ch4_clock;
+
+    bool on;
+} apu_data;
+
 
 typedef struct {//As of now this contains redundant fields.They're needed for the FIFO
     int nobjects;
     uint16_t objects[10];
-    /*
-    The following entries will be needed for making the emulator cycle accurate
-    int8_t BGFIFO[16];//The FIFOs hold information for 16 pixels
+    int8_t obj_scanline[160];
+
+    uint8_t BGcolours[8];
     uint8_t OBJFIFO[16];
+    
+    uint8_t object_start;
+    uint8_t increment;
     uint16_t tilemap;
-    uint8_t tilex;
-    uint8_t tiley;
-    uint8_t fetchx;
-    uint8_t scanx;*/
+    uint8_t fetch_x;//fetcherX
+    uint8_t fetchy;
+    uint8_t scanx;
+    //SDL version
     uint32_t framebuffer[144 * 160];
+    //Pico version
+    //uint16_t framebuffer[144 * 160];
     bool transfer;
+    bool finish;
+    bool init_mode3;
     int transfer_timer;
+    unsigned int countdown;
+    int length;
+    int ly_count;
+
+    enum {
+        MODE0,
+        MODE1,
+        MODE2,
+        MODE3
+    } mode;
+
 } ppu_data;
 
 struct state {
@@ -239,17 +341,17 @@ typedef struct {
     op_format format;
 } op_info;
 
-void ppu(struct cartridge *cart, cpu *CPU, memory *mem, ppu_data *data);
+int ppu(struct cartridge *cart, cpu *CPU, memory *mem, ppu_data *data);
 
-uint32_t execute(struct cartridge *cart, cpu *CPU, memory *mem);
+uint32_t execute(apu_data *audio, struct cartridge *cart, cpu *CPU, memory *mem);
 
-uint32_t interrupt_service(struct cartridge *cart, cpu *CPU, memory *mem, int bit);
+uint32_t interrupt_service(apu_data *audio, struct cartridge *cart, cpu *CPU, memory *mem, int bit);
 
 void debugger(struct debug_state *debug, struct cartridge *cart, cpu *CPU, memory *mem);
 
 void init_table(void);
 
-void mem_write(struct cartridge *cart, cpu *CPU, memory *mem, uint16_t addr, uint8_t value);
+void mem_write(apu_data *audio, struct cartridge *cart, cpu *CPU, memory *mem, uint16_t addr, uint8_t value);
 
 uint8_t mem_read(struct cartridge *cart, cpu *CPU, memory *mem, uint16_t addr);
 
@@ -257,4 +359,26 @@ uint8_t unrestricted_read(struct cartridge *cart, memory *mem, uint16_t addr);
 
 void free_cart(struct cartridge *cart);
 
+void cart_init(struct cartridge *cart);
+
+int emulate();
+
+void OAM_DMA_Transfer(struct cartridge *cart, memory *mem);
+
 extern op_info operations[512];
+
+uint16_t get_sample_left(apu_data *data, memory *mem);
+uint16_t get_sample_right(apu_data *data, memory *mem);
+
+
+void trigger_pulse(apu_data *data, memory *mem, int channel);
+void trigger_wave(apu_data *data, memory *mem);
+void trigger_noise(apu_data *data, memory *mem);
+
+void clock_pulse(apu_data *data, memory *mem);
+void clock_wave(apu_data *data, memory *mem);
+void lfsr_step(apu_data *data, memory *mem);
+
+void apu_div_actions(apu_data *data, cpu *CPU, memory *mem);
+
+void audiooff(apu_data *data, memory *mem);

@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include "emulator.h"
 
-void write_IO(cpu *CPU, memory *mem, uint16_t addr, uint8_t value){
+void write_IO(apu_data *audio, cpu *CPU, memory *mem, uint16_t addr, uint8_t value){
     switch(addr){
         case(DIVaddr):
         DIV(mem)=0;
@@ -40,9 +40,141 @@ void write_IO(cpu *CPU, memory *mem, uint16_t addr, uint8_t value){
         BANK(mem) = value;
         mem->boot_mapped = 0;
         break;
+        case(NR12addr):{
+            if(!(value & 0xF8)){
+                audio->dacs[0] = 0;
+                audio->channel_status[0] = 0;
+                NR52(mem) &= ~(1);
+            }
+            IOREG(mem,addr) = value;
+            break;
+        }
+        case(NR14addr):{
+            //"Writing any value to NR14 with bit 7 set triggers the channel"
+            //so it seems as though it's correct to check this before changing the value. 
+            CPU->length_enable[0] = value & (1<<6);
+
+            if((NR14(mem) & 0x80) || (value & (1<<7))){
+                trigger_pulse(audio, mem, 0);
+                // CPU->audio_triggers[0] = 1;
+            } ;
+            mem->IO[addr - 0xFF00] = value;
+            // if(NR14(mem) & 0x80){
+            //     CPU->audio_triggers[0] = 1;
+            // }
+
+            break;
+        }
+        case(NR22addr):{
+            if(!(value & 0xF8)){
+                audio->dacs[1] = 0;
+                audio->channel_status[1] = 0;
+                NR52(mem) &= ~(1<<1);
+            }
+            IOREG(mem,addr) = value;
+            break;
+        }
+        case(NR24addr):{
+            CPU->length_enable[1] = value & (1<<6);
+            
+            if((NR24(mem) & 0x80) || (value & (1<<7))){
+                trigger_pulse(audio, mem, 1);
+                // CPU->audio_triggers[1] = 1;
+            }  
+            mem->IO[addr - 0xFF00] = value;
+
+            break;
+        }
+        case(NR30addr):{
+            if(value & (1<<7)){
+                audio->dacs[2] = 1;
+            } else {
+                audio->dacs[2] = 0;
+                audio->channel_status[2] = 0;
+                NR52(mem) &= ~(1<<2);
+            }
+            IOREG(mem, addr) = value;
+        }
+        case(NR33addr):{
+            audio->vols[2] = (value >> 5) & 3;
+            IOREG(mem, addr) = value;
+        }
+        case(NR34addr):{
+            CPU->length_enable[2] = value & (1<<6);
+            
+            if((NR34(mem) & 0x80) || (value & (1<<7))){
+                trigger_wave(audio, mem);
+                // CPU->audio_triggers[2] = 1;
+            }  
+            mem->IO[addr - 0xFF00] = value;
+            break;
+        }
+        case(NR42addr):{
+            if(!(value & 0xF8)){
+                audio->dacs[3] = 0;
+                audio->channel_status[3] = 0;
+                NR52(mem) &= ~(1<<3);
+            }
+            IOREG(mem,addr) = value;
+            break;
+        }
+
+        case(NR43addr):{
+            // audio->ch4_clock = (~value) & 0xE0;
+            uint8_t shift = (value >> 4) & 0x0F;
+            audio->ch4_clock = value < 14;
+            uint8_t divider = value & 7;
+            //we use machine cycles here. We would have 16 and 8 if we were using dot cycles.
+            audio->ch4_target = divider ?  (4 * divider * (1<<shift)) : (2 * (1<<shift)); 
+
+            IOREG(mem, addr) = value;
+        }
+
+        case(NR44addr):{
+            CPU->length_enable[3] = value & (1<<6);
+            
+            if((NR44(mem) & 0x80) || (value & (1<<7))){
+                trigger_noise(audio, mem);
+                // CPU->audio_triggers[3] = 1;
+            }  
+            mem->IO[addr - 0xFF00] = value;
+            break;
+        }
+
+        case(NR52addr):{
+            if(value & (1<<7)){
+                audio->on = true;
+            } else{
+                audiooff(audio, mem);
+                puts("audio off");
+                fflush(stdout);
+            }
+
+            uint8_t mask = NR52(mem) & 0x7F;
+            value = (value & (1<<7)) | mask;
+            IOREG(mem, addr) = value;
+            break;
+        }
+
         default:
         mem->IO[addr - 0xFF00] = value;
     }
+}
+
+void write_exRAM_MBC1(struct cartridge *cart, uint16_t addr, uint8_t value){//need to make sure RAM number is at most #ram banks
+    addr &= 0x1FFF;
+    addr |= cart->Banking_mode_select ? (cart->RAM_bank_number % cart->RAM_banks) << 13 : 0;
+    cart->RAM[addr] = value;
+}
+
+void write_exRAM_MBC5(struct cartridge *cart, uint16_t addr, uint8_t value){//need to make sure RAM number is at most #ram banks
+    addr &= 0x1FFF;
+    addr |= (cart->RAM_bank_number % cart->RAM_banks) << 13;
+    cart->RAM[addr] = value;
+}
+
+void write_exRAM_none(struct cartridge *cart, uint16_t addr, uint8_t value){
+
 }
 
 void write_exRAM(struct cartridge *cart, uint16_t addr, uint8_t value){//need to make sure RAM number is at most #ram banks
@@ -54,23 +186,25 @@ void write_exRAM(struct cartridge *cart, uint16_t addr, uint8_t value){//need to
     addr &= 0x1FFF;
 
     switch(cart->type){
-        case(MBC5):
+        case MBC5 :
             addr |= (cart->RAM_bank_number % cart->RAM_banks) << 13;
             break;
-        case(MBC1):
+        case MBC1:
             addr |= cart->Banking_mode_select ? (cart->RAM_bank_number % cart->RAM_banks) << 13 : 0;
             break;
+        default:
+        //unsupported MBC type, should probably print an error message
     }
     cart->RAM[addr] = value;
 }
 
-void write_std(cpu *CPU, memory *mem, uint16_t addr, uint8_t value){
+void write_std(apu_data *audio, cpu *CPU, memory *mem, uint16_t addr, uint8_t value){
 
     if(CPU->transfer && (addr <= 0xFF80)){
         return;
     }
     if((addr >= 0xFF00) && (addr <= 0xFF7F)){
-        write_IO(CPU, mem, addr, value);
+        write_IO(audio, CPU, mem, addr, value);
     }
     else if(((addr >= 0xC000)&&(addr <= 0xDFFF))||((addr >= 0xE000)&&(addr <= 0xFDFF))){
         if(addr >= 0xE000){
@@ -109,6 +243,10 @@ void write_MBC1(struct cartridge *cart, uint16_t addr, uint8_t value){
     }
 }
 
+void write_none(struct cartridge *cart, uint16_t addr, uint8_t value){
+
+}
+
 uint8_t read_MBC1(struct cartridge *cart, uint16_t addr){//needs work for multi game compilation carts
     uint32_t address = addr&0x3FFF;
     if (addr<=0x3FFF){
@@ -130,6 +268,10 @@ uint8_t read_MBC1(struct cartridge *cart, uint16_t addr){//needs work for multi 
             return cart->RAM[address];
         }
     }
+}
+
+uint8_t read_ROM(struct cartridge *cart, uint16_t addr){//needs work for multi game compilation carts
+    return cart->ROM[addr];
 }
 
 void write_MBC5(struct cartridge *cart, uint16_t addr, uint8_t value){
@@ -165,22 +307,46 @@ uint8_t read_MBC5(struct cartridge *cart, uint16_t addr){//needs work for multi 
     }
 }
 
-void mem_write(struct cartridge *cart, cpu *CPU, memory *mem, uint16_t addr, uint8_t value){
-    if (addr<=0x7FFF){
-        switch(cart->type){
-            case(MBC1):
-            write_MBC1(cart, addr, value);
+void cart_init(struct cartridge *cart){
+    switch(cart->type){
+        case MBC1:{
+            cart->MBC_control = write_MBC1;
+            cart->cart_read = read_MBC1;
+            cart->write_exRAM = write_exRAM_MBC1;
             break;
-            case(MBC5):
-            write_MBC5(cart, addr, value);
-            break;
-            default:
-            //message for unsupported MBC type
         }
+        caseMBC5:{
+            cart->MBC_control = write_MBC5;
+            cart->cart_read = read_MBC5;
+            cart->write_exRAM = write_exRAM_MBC5;
+            break;
+        }
+        case ROM_ONLY:{
+            cart->MBC_control = write_none;//should be something else
+            cart->cart_read = read_ROM;
+            cart->write_exRAM = write_exRAM_none;
+            break;
+        }
+        default:{
+            cart->MBC_control = write_none;
+            cart->cart_read = read_ROM;
+            cart->write_exRAM = write_exRAM_none;
+        }
+        //message for unsupported MBC type
+    }
+
+    if(!cart->RAM_enable || cart->RAM == NULL){
+        cart->write_exRAM = write_exRAM_none;
+    }    
+}
+
+void mem_write(apu_data *audio, struct cartridge *cart, cpu *CPU, memory *mem, uint16_t addr, uint8_t value){
+    if (addr<=0x7FFF){
+        cart->MBC_control(cart, addr, value);
     } else if(addr >= 0xA000 && addr <= 0xBFFF){
-        write_exRAM(cart, addr, value);
+        cart->write_exRAM(cart, addr, value);
     } else {
-        write_std(CPU, mem, addr, value);
+        write_std(audio, CPU, mem, addr, value);
     }
 }
 
@@ -194,17 +360,7 @@ uint8_t mem_read(struct cartridge *cart, cpu *CPU, memory *mem, uint16_t addr){
     }
 
     if(addr <= 0x7FFF || (addr >= 0xA000 && addr <= 0xBFFF)){//need to read cartridge data
-        switch(cart->type){
-            case(MBC1):
-            return read_MBC1(cart, addr);
-            case(MBC5):
-            return read_MBC5(cart, addr);
-            case(ROM_ONLY):
-            return cart->ROM[addr];
-            break;
-            default:
-            //message for unsupported MBC type
-        }
+        return cart->cart_read(cart, addr);
     } else if (addr >= 0x8000 && addr <= 0x9FFF){
         return CPU->VRAM_access ? mem->VRAM[addr - 0x8000] : 0xFF;
     } else if (addr >= 0xC000 && addr <= 0xDFFF){
@@ -222,24 +378,13 @@ uint8_t mem_read(struct cartridge *cart, cpu *CPU, memory *mem, uint16_t addr){
     }
 }
 
-
-//Unrestricted read is used for the debugger
 uint8_t unrestricted_read(struct cartridge *cart, memory *mem, uint16_t addr){
     if(mem->boot_mapped && addr<0x100){
         return mem->boot_ROM[addr];
     }
 
     if(addr <= 0x7FFF || (addr >= 0xA000 && addr <= 0xBFFF)){//need to read cartridge data
-        switch(cart->type){
-            case(MBC1):
-            return read_MBC1(cart, addr);
-            case(MBC5):
-            return read_MBC5(cart, addr);
-            case(ROM_ONLY):
-            return cart->ROM[addr];
-            default:
-            //message for unsupported MBC type
-        }
+        cart->cart_read(cart,addr);
     } else if (addr >= 0x8000 && addr <= 0x9FFF){
         return mem->VRAM[addr - 0x8000];
     } else if (addr >= 0xC000 && addr <= 0xDFFF){
@@ -261,4 +406,3 @@ void free_cart(struct cartridge *cart){
     free(cart->ROM);
     free(cart->RAM);
 }
-

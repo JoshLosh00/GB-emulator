@@ -7,6 +7,9 @@
 #include <SDL2/SDL.h>
 #include "font8x8_basic.h"
 
+
+//need to implement the debug features
+
 //kind of have x/8 as my cursor 
 
 void newline(struct debug_state *debug){
@@ -113,6 +116,13 @@ int32_t get_address(char *cmd, cpu *CPU){
     }
 }
 
+void quit_debug(struct debug_state *debug){
+    debug->on = 0;
+    SDL_DestroyTexture(debug->Texture);
+    SDL_DestroyRenderer(debug->Renderer);
+    SDL_DestroyWindow(debug->Window);
+}
+
 void breakpoint(struct debug_state *debug, cpu *CPU){
     int32_t tmp_addr = get_address(debug->command +6,CPU);// command starts with  "break " so this makes sense.
     if (tmp_addr == -1){
@@ -166,39 +176,39 @@ void instr(struct cartridge *cart, struct debug_state *debug, cpu *CPU, memory *
     }  else{
         data = operations[opcode];
     }
-    char response[32];
+    char response[64];
     switch(data.format){//The bytes shown by the responces are subject to blocked reads 
         case(IMM8):
-        snprintf(response,32, "PC:%04X %s %02X", PC, data.name, mem_read(cart,CPU,mem,(*position)++));
+        snprintf(response,64, "PC:%04X %s %02X", PC, data.name, mem_read(cart,CPU,mem,(*position)++));
         break;
         case(IMM8_2):
-        snprintf(response, 32, data.name, PC, (0xFF00+mem_read(cart,CPU,mem,(*position)++)));
+        snprintf(response, 64, data.name, PC, (0xFF00+mem_read(cart,CPU,mem,(*position)++)));
         break;
         case(IMM8_3):
-        snprintf(response,32, "PC:%04X %s %02d", PC, data.name, (int8_t)mem_read(cart,CPU,mem,(*position)++));
+        snprintf(response,64, "PC:%04X %s %02d", PC, data.name, (int8_t)mem_read(cart,CPU,mem,(*position)++));
         break;
         case(IMM16):{
             uint8_t lo = mem_read(cart,CPU,mem,(*position)++);
             uint8_t hi = mem_read(cart,CPU,mem,(*position)++);
             uint16_t addr = (hi<<8)|lo;
-            snprintf(response,32, "PC:%04X %s $%04X",PC, data.name, addr);
+            snprintf(response,64, "PC:%04X %s $%04X",PC, data.name, addr);
             break;
         }
         case(IMM16_2):{
             uint8_t lo = mem_read(cart,CPU,mem,(*position)++);
             uint8_t hi = mem_read(cart,CPU,mem,(*position)++);
             uint16_t addr = (hi<<8)|lo;
-            snprintf(response,32, data.name, PC, addr);
+            snprintf(response,64, data.name, PC, addr);
             break;
         }
         case(JR):{
             int8_t operand = mem_read(cart,CPU,mem,(*position)++);
             uint16_t dest = *position + operand;
-            snprintf(response,32, "PC:%04X %s $%04X", PC, data.name, dest);
+            snprintf(response,64, "PC:%04X %s $%04X", PC, data.name, dest);
             break;
         }
         default:
-            snprintf(response,32, "PC:%04X %s", PC, data.name);
+            snprintf(response,64, "PC:%04X %s", PC, data.name);
     }
     draw_line(debug, response);
 }
@@ -218,6 +228,24 @@ void fps(struct debug_state *debug){
     debug->x = save_x;
 }
 
+// void show(struct debug_state *debug, cpu*CPU, memory *mem, struct cartridge *cart){
+//     int32_t tmp_addr = get_address(debug->command +5,CPU);// command starts with  "show " so this makes sense.
+//     switch(tmp_addr){
+//         case(-1):
+//         draw_line(debug, "Give PC");
+//         break;
+//         case(-2):
+//         draw_line(debug, "Invalid address");
+//         break;
+//         default:{
+//             uint16_t position = tmp_addr;
+//             for (int i = 0; i<4; i++){
+//                 instr(debug, mem, &position);
+//             }
+//         }
+//     }
+// }
+
 void show(struct debug_state *debug, cpu*CPU, memory *mem, struct cartridge *cart){
     uint16_t position = CPU->PC;
     for (int i = 0; i<4; i++){
@@ -234,7 +262,7 @@ void lcd(struct debug_state *debug, memory *mem){
 void decode_command(struct debug_state *debug, struct cartridge *cart, cpu*CPU, memory *mem){
     char *cmd = debug->command;
     if(strcmp(cmd,"help")==0){
-        draw_line(debug, "Available commands: break XXXX, clear, show, show PC, read XXXX, lcd, continue");
+        draw_line(debug, "Available commands: break XXXX, clear, show, show PC, read XXXX, lcd, continue, quit");
     } else if (strncmp(cmd,"break ",6)==0){
         breakpoint(debug, CPU);
     } else if (strcmp(cmd, "clear")==0){
@@ -248,7 +276,9 @@ void decode_command(struct debug_state *debug, struct cartridge *cart, cpu*CPU, 
         debug->paused = 0;
     } else if (strcmp(cmd, "lcd")==0){
         lcd(debug, mem);
-    }
+    } else if (strcmp(cmd, "quit")==0){
+        quit_debug(debug);
+    } 
     else{
         draw_line(debug, "Type 'help' for a list of available commands");
     }
@@ -282,6 +312,11 @@ void debugger(struct debug_state *debug, struct cartridge *cart, cpu *CPU, memor
     }
     if (debug->on){
         
+        /*
+        for (int i =0; i<strlen(debug->command);i++){
+            draw_glyph(debug, debug->command[i]);
+        }
+        */
         if(debug->broken){
             show(debug, CPU, mem, cart);
             debug->broken = 0;
@@ -309,8 +344,7 @@ void debugger(struct debug_state *debug, struct cartridge *cart, cpu *CPU, memor
         debug->then = now;
 
 
-        //Uncomment the following line and corresponding } to only get SDL polling every frame instead of always.  Can lead to unresponsiveness
-        //if (debug->timer>target){ 
+        //if (debug->timer>target){
             SDL_UpdateTexture(
                 debug->Texture,
                 NULL,
@@ -330,6 +364,7 @@ void debugger(struct debug_state *debug, struct cartridge *cart, cpu *CPU, memor
                     SDL_DestroyRenderer(debug->Renderer);
                     SDL_DestroyWindow(debug->Window);
                 }else if (e.type == SDL_TEXTINPUT){
+                    /* Add new text onto the end of our text */
                     strcat(debug->command, e.text.text);
                     break;
                 }else if (e.type == SDL_KEYDOWN) {
@@ -358,9 +393,18 @@ void debugger(struct debug_state *debug, struct cartridge *cart, cpu *CPU, memor
         //} 
     }
 
+        
+    /*
+    if(debug->on == 0){
+        debug->paused = 0;
+        SDL_DestroyTexture(debug->Texture);
+        SDL_DestroyRenderer(debug->Renderer);
+        SDL_DestroyWindow(debug->Window);
+        //SDL_Quit();
+    }
+        */
 }
-
-/* This is to test the debugger by itself 
+/*
 int main(int argc, char *argv[]){
     cpu CPU = {0};
     struct debug_state dbinstance = {0};

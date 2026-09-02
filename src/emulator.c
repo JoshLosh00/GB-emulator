@@ -3,8 +3,8 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
-#include <SDL2/SDL.h>
 #include "emulator.h"
+#include "dmg.h"
 #define LOG_SIZE 5 
 
 
@@ -27,6 +27,7 @@ void delay(uint64_t start, uint64_t target, uint64_t tpms){
     }
 }
 
+
 void assign_joyp(memory *mem, uint8_t joypad){
     JOYP(mem) |= 0x0F;
     if(!(JOYP(mem) & 0x10)){//if bit 4 is 0, the D-pad gets read
@@ -37,11 +38,19 @@ void assign_joyp(memory *mem, uint8_t joypad){
     }
 }
 
-int main(int argc, char *argv[]){
+int SDL_main(int argc, char *argv[]){
 
-    struct state log[LOG_SIZE];
+    SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO);//should probably make this into an init function that checks whether it succeeds
 
     struct cartridge cart = {0};
+
+    apu_data audio_data = {0};
+
+    audio_data.DIV_APU = 0;
+    audio_data.prev_DIV = 0;
+    audio_data.tick = 0;
+    uint32_t audio_timer = 0;
+
 
     memory meminstance = {0};
     memory *mem = &meminstance; 
@@ -62,14 +71,39 @@ int main(int argc, char *argv[]){
     debug.emu_fps = 60.0;
     debug.nbreaks = 0;
 
+    int16_t samples[2048];
+    for (int i = 0; i < 1024; i++) {
+        samples[i] = 0;
+    }
+    
+    //memset(samples, 0, sizeof(samples));
+    int sample_size = 0;
+
+    SDL_AudioSpec desired = {0};
+    SDL_AudioSpec obtained;
+
+    desired.freq = SAMPLE_RATE;
+    desired.format = AUDIO_S16MSB;
+    desired.channels = 2;
+    desired.samples = 1024;
+    desired.callback = NULL;
+
+    SDL_AudioDeviceID audio_device =
+        SDL_OpenAudioDevice(NULL, 0, &desired, &obtained, 0);
+
+    if (audio_device == 0) {
+        printf("Audio error: %s\n", SDL_GetError());
+        return -1;
+    }
+
+    SDL_PauseAudioDevice(audio_device, 0);
+
+    long int audio_phase = 0;
+
     bool leave = 0;
     bool quick_boot = 0;
 
-
-
     FILE *fp;
-
-    SDL_Init(SDL_INIT_VIDEO);//should probably make this into an init function that checks whether it succeeds
 
     SDL_Window *window = SDL_CreateWindow(
         "gb",
@@ -148,12 +182,9 @@ int main(int argc, char *argv[]){
 
     fclose(fp);
 
-    fp = fopen("dmg.bin", "rb");
-
-    fread(mem->boot_ROM, 1, 0x100, fp);
+    memcpy(mem->boot_ROM, dmg_bin, dmg_bin_len);
     mem->boot_mapped = 1;
-    
-    fclose(fp);
+
 
     init_table();
 
@@ -167,8 +198,9 @@ int main(int argc, char *argv[]){
     ppu_data datainstance = {0};
     ppu_data *data = &datainstance;
     for(int i = 0; i<144*160; i++){
-        data->framebuffer[i]=0xFFFFFFFF;
+        data->framebuffer[i]=0x9990;
     }
+
     data->nobjects = 0;
     for(int i = 0; i<10; i++){
         data->objects[i]=0;
@@ -244,7 +276,7 @@ int main(int argc, char *argv[]){
         NR24(mem) = 0xBF;
         NR30(mem) = 0x7F;
         NR31(mem) = 0xFF;
-        NR32(mem) =0x9F;
+        NR32(mem) = 0x9F;
         NR33(mem) = 0xFF;
         NR34(mem) = 0xBF;
         NR41(mem) = 0xFF;
@@ -267,28 +299,22 @@ int main(int argc, char *argv[]){
         mem->boot_mapped = 0;
     }
     
+    cart_init(&cart);
 
+    uint64_t generator = 0;
+    int transfer_timer = 0;
 
+    //CPU->begin_count = true;
+    CPU->counter = 0;
+    CPU->frames = 0;
+
+    int ppu_countdown = 0;
+    data->ly_count = 0;
+    data->mode = MODE2;
+    data->length = 0;
+
+    int ch4_counter = 0;
     while(1){
-
-        SDL_Event e;
-        while(SDL_PollEvent(&e)){
-            if(e.type == SDL_QUIT){
-                SDL_DestroyTexture(texture);
-                SDL_DestroyRenderer(renderer);
-                SDL_DestroyWindow(window);
-                SDL_Quit();
-
-                free_cart(&cart);
-                return 0;
-            }
-            else if (e.type == SDL_KEYDOWN) {
-                if(e.key.keysym.sym == SDLK_ESCAPE) {
-                    leave = 1;
-                    break;
-                }
-            }
-        }
 
         const Uint8 *keys = SDL_GetKeyboardState(NULL);
 
@@ -311,15 +337,23 @@ int main(int argc, char *argv[]){
             continue;
         }
 
-        //return -1;
 
-        assign_joyp(mem, joypad);//The way the joypad works is that it must be continuously updated
+        assign_joyp(mem, joypad);//The way the joypad works is that it must be continuously updated probably not every call though
 
-        div_timer += cycles;
+        uint8_t prev_DIV = DIV(mem);
+
+        div_timer += cycles;//M cycles
         if (div_timer > 64){//writing here resets the value to 0
             DIV(mem)++;//incrementing the DIV register
             div_timer -= 64;
         }
+
+        if(((prev_DIV & 0x10) - (DIV(mem) & 0x10)) == 0x10){//falling edge
+            audio_data.prev_DIV = audio_data.DIV_APU;
+            (audio_data.DIV_APU)++;
+            apu_div_actions(&audio_data, CPU, mem);
+        }
+
         if(TAC(mem) & 0x04){//TIMA
             switch(TAC(mem) & 0x03){
                 case 0x00:
@@ -362,23 +396,99 @@ int main(int argc, char *argv[]){
         }
 
         if(CPU->IME && pending){
-            //printf("interrupt called\n");
             for(int i = 0; i<5; i++){
                 if(pending & (1<<i)){
-                    cycles = interrupt_service(&cart,CPU,mem,i);//always 5
+                    cycles = interrupt_service(&audio_data, &cart,CPU,mem,i);//always 5
                     break;
                 }
             }
         } else{
-            cycles = execute(&cart, CPU, mem);
+            cycles = execute(&audio_data, &cart, CPU, mem);
+            if(CPU->transfer){//tranfers take 640 dots in normal speed or 320 in double speed
+                data->transfer_timer += cycles;
+                if(data->transfer_timer >= 640){//this means we get 640 iterations of the loop when this flag is active (values 0 to 639)
+                    CPU->transfer = 0;
+                }
+            }
         }
 
-        for(int i=0; i<4*cycles; i++){
-            ppu(&cart, CPU, mem, data);
+        if(CPU->transfer_pending){
+            //printf("transfer\n");
+            OAM_DMA_Transfer(&cart, mem);
+            // OAM_transfer = true;
+            CPU->transfer_pending = false;
+        }
+
+        if(CPU->transfer){
+            transfer_timer += 4*cycles;
+            if(transfer_timer >= 640){
+                transfer_timer = 0;
+                CPU->transfer = false;
+            }
+        }
+
+        for(int i=0; i<cycles; i++){
+   
+            if((LCDC(mem)&0x80) == 0){//LCD off
+                //mode = 0;
+                //if ... {
+                    LY(mem) = 0;
+                    CPU->OAM_access = 1;
+                    CPU->VRAM_access = 1;
+                    ppu_countdown = 0;
+                    data->finish = 0;
+                    data->length = 0;
+                    data->ly_count = 0;
+                    data->mode = MODE2;
+                //}
+            } else{
+                if(ppu_countdown <= 0){
+                    ppu_countdown = ppu(&cart, CPU, mem, data);
+                }
+                data->ly_count +=4;
+                if(data->ly_count >= 456){
+                    LY(mem)++;
+                    if(LY(mem) == 154)  LY(mem) = 0;
+                    if(LY(mem) == LYC(mem)){
+                        STAT(mem) |= 0x04;//This is the LY == LYC condition
+                    } else{
+                        STAT(mem) &= ~0x04;//
+                    }
+                    data->ly_count = 0;
+                }
+                ppu_countdown -= 4;
+            }
+
+            //APU
+            if(audio_data.on){
+                clock_pulse(&audio_data, mem);
+                clock_wave(&audio_data, mem);
+                clock_wave(&audio_data, mem);
+                if(audio_data.ch4_clock){
+                    if(++ch4_counter >= audio_data.ch4_target){
+                        ch4_counter = 0;
+                        lfsr_step(&audio_data, mem);
+                    }
+                }
+            }
+
+            audio_phase += 4*SAMPLE_RATE;
+                if(audio_phase >= MASTER_CLOCK){
+                audio_phase -= MASTER_CLOCK;
+                samples[sample_size++] = get_sample_left(&audio_data, mem);
+                samples[sample_size++] = get_sample_right(&audio_data, mem);
+                if(sample_size == 2048){
+                    SDL_QueueAudio(audio_device, samples, sizeof(samples));
+                    sample_size = 0;
+                }
+            }
+
         }
 
         CPU->F &= 0xF0;
-        if(CPU->draw){//once a frame at vblank
+        if(CPU->draw){
+
+            //once a frame at vblank
             //countdown++;
             SDL_UpdateTexture(
                 texture,
@@ -391,9 +501,9 @@ int main(int argc, char *argv[]){
                 debugger(&debug, &cart, CPU, mem);
             }
 
-            //if(countdown == 100000){
+            // if(countdown == 100000){
             //    debug->on =0;
-            //}
+            // }
 
             SDL_RenderClear(renderer);
             SDL_RenderCopy(renderer, texture, NULL, NULL);
@@ -447,16 +557,19 @@ int main(int argc, char *argv[]){
             );
 
         }
+
         //For test rom validation
-        /*if (mem[0xFF02] & 0x80) {
-            putchar(mem[0xFF01]);
-            fflush(stdout);
-            mem[0xFF02] = 0x00; // clear transfer
+        //if (SC(mem) & 0x80) {
+            //puts("serial output");
+            // putchar(SB(mem));
+            // fflush(stdout);
+            //LCD_1IN3_Clear(RED);
+            //SC(mem) = 0x00; // clear transfer
 
-        }*/
+        //}
 
 
-       if(leave) break;
+        if(leave) break;
 
        for(int i=0;i<debug.nbreaks;i++){
             if(CPU->PC == debug.breakpoints[i]){
@@ -474,3 +587,4 @@ int main(int argc, char *argv[]){
 
     free_cart(&cart);
 }
+
