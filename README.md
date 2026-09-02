@@ -1,9 +1,9 @@
 # GB-emulator
 A project to write a Game Boy emulator in C using SDL2.
 Current features:
-Fully functional CPU instruction decoder, basic PPU tile renderer, joypad input, timers and interrupts, and ROM bank switching via MBC1.
+Fully functional CPU instruction decoder, PPU renderer, joypad input, timers and interrupts, and ROM bank switching via MBC1 and MBC5.
 Current limitations:
-As yet unimplemented functionality such as, memory bank controllers beyond MBC1 and MBC5, save data support, link cable support and audio.
+As yet unimplemented functionality such as, memory bank controllers beyond MBC1 and MBC5, save data support and link cable support.
 Limited testing on commercial games. 
 The PPU is not yet cycle accurate. 
 No GameBoy Color support.
