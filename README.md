@@ -5,7 +5,7 @@ Fully functional CPU instruction decoder, PPU renderer, joypad input, timers and
 Current limitations:
 As yet unimplemented functionality such as, memory bank controllers beyond MBC1 and MBC5, save data support and link cable support.
 Limited testing on commercial games. 
-The PPU is not yet cycle accurate. 
+Known audio glitches. 
 No GameBoy Color support.
 
 ROMs not included.
