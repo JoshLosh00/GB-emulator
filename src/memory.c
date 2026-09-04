@@ -54,7 +54,7 @@ void write_IO(apu_data *audio, cpu *CPU, memory *mem, uint16_t addr, uint8_t val
             //so it seems as though it's correct to check this before changing the value. 
             CPU->length_enable[0] = value & (1<<6);
 
-            if((NR14(mem) & 0x80) || (value & (1<<7))){
+            if(audio->dacs[2] && (NR14(mem) & 0x80) || (value & (1<<7))){
                 trigger_pulse(audio, mem, 0);
                 // CPU->audio_triggers[0] = 1;
             } ;
@@ -77,7 +77,7 @@ void write_IO(apu_data *audio, cpu *CPU, memory *mem, uint16_t addr, uint8_t val
         case(NR24addr):{
             CPU->length_enable[1] = value & (1<<6);
             
-            if((NR24(mem) & 0x80) || (value & (1<<7))){
+            if(audio->dacs[2] && (NR24(mem) & 0x80) || (value & (1<<7))){
                 trigger_pulse(audio, mem, 1);
                 // CPU->audio_triggers[1] = 1;
             }  
@@ -92,6 +92,8 @@ void write_IO(apu_data *audio, cpu *CPU, memory *mem, uint16_t addr, uint8_t val
                 audio->dacs[2] = 0;
                 audio->channel_status[2] = 0;
                 NR52(mem) &= ~(1<<2);
+                // puts("3 disabled");
+                // fflush(stdout);
             }
             IOREG(mem, addr) = value;
         }
@@ -102,7 +104,7 @@ void write_IO(apu_data *audio, cpu *CPU, memory *mem, uint16_t addr, uint8_t val
         case(NR34addr):{
             CPU->length_enable[2] = value & (1<<6);
             
-            if((NR34(mem) & 0x80) || (value & (1<<7))){
+            if(audio->dacs[2] && (NR34(mem) & 0x80) || (value & (1<<7))){
                 trigger_wave(audio, mem);
                 // CPU->audio_triggers[2] = 1;
             }  
@@ -133,7 +135,7 @@ void write_IO(apu_data *audio, cpu *CPU, memory *mem, uint16_t addr, uint8_t val
         case(NR44addr):{
             CPU->length_enable[3] = value & (1<<6);
             
-            if((NR44(mem) & 0x80) || (value & (1<<7))){
+            if(audio->dacs[3] && (NR44(mem) & 0x80) || (value & (1<<7))){
                 trigger_noise(audio, mem);
                 // CPU->audio_triggers[3] = 1;
             }  
@@ -146,8 +148,8 @@ void write_IO(apu_data *audio, cpu *CPU, memory *mem, uint16_t addr, uint8_t val
                 audio->on = true;
             } else{
                 audiooff(audio, mem);
-                puts("audio off");
-                fflush(stdout);
+                //puts("audio off");
+                //fflush(stdout);
             }
 
             uint8_t mask = NR52(mem) & 0x7F;
