@@ -1,2 +1,0 @@
-$env:PICO_SDK_PATH = "C:\Users\USER\.pico-sdk\sdk\2.3.0"  
-$env:PICO_TOOLCHAIN_PATH = "C:\Users\USER\.pico-sdk\toolchain\15_2_Rel1\bin"
