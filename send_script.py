@@ -2,11 +2,13 @@ import serial
 import sys
 
 def main():
-    if len(sys.argv) != 2: 
-        print("Usage: gb-load <rom>") 
+    if len(sys.argv) != 3: 
+        print("Usage: gb-load <port> <rom> ")
         sys.exit(1)
          
-    name = sys.argv[1]
+    port = sys.argv[1]
+         
+    name = sys.argv[2]
     
     with open(name, 'rb') as f:
         game = bytearray(f.read())
